@@ -6,6 +6,12 @@ import type { ModelMessage } from "ai";
 import { AIMessage, HumanMessage, trimMessages } from "@langchain/core/messages";
 import { NextRequest, NextResponse } from "next/server";
 
+import {
+  chatQuotaMaxFromEnv,
+  parseQuotaRpc,
+  peekChatQuota,
+  type UserChatUsageRow,
+} from "@/lib/chatQuota";
 import { getAIConfig, getAiSdkGatewayBaseUrl } from "@/lib/ai/config";
 import { getObservabilityClient } from "@/lib/ai/observability";
 import { buildMcpToolsForAiSdk } from "@/lib/ai/mcpToolsAiSdk";
@@ -13,6 +19,8 @@ import { ContextDetector } from "@/lib/contextDetector";
 import { MCPClient } from "@/lib/mcp-client";
 import { PromptContext, PromptEngine } from "@/lib/promptEngine";
 import { readPromptRuntimeConfig } from "@/lib/promptConfigStore";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { PLAYGROUND_DEVICE_COOKIE } from "@/lib/supabase/middleware";
 
 type ConversationMessage = {
   sender: "user" | "ai";
@@ -128,6 +136,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Message is required and must be a string" },
         { status: 400 }
+      );
+    }
+
+    const supabaseAuth = await createSupabaseServerClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabaseAuth.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const deviceId = request.cookies.get(PLAYGROUND_DEVICE_COOKIE)?.value ?? null;
+    const quotaMax = chatQuotaMaxFromEnv();
+    const { data: quotaRaw, error: quotaError } = await supabaseAuth.rpc(
+      "increment_and_check_chat_quota",
+      {
+        p_device_id: deviceId,
+        p_max: quotaMax,
+      }
+    );
+
+    if (quotaError) {
+      console.error("increment_and_check_chat_quota", quotaError);
+      return NextResponse.json(
+        {
+          error: "Chat quota service unavailable",
+          details: quotaError.message,
+        },
+        { status: 503 }
+      );
+    }
+
+    const quota = parseQuotaRpc(quotaRaw);
+    if (!quota.allowed) {
+      return NextResponse.json(
+        {
+          error: "Daily chat limit reached for this account.",
+          code: quota.code ?? "CHAT_QUOTA_EXCEEDED",
+          resetAt: quota.reset_at,
+          remaining: quota.remaining ?? 0,
+        },
+        { status: 429 }
       );
     }
 
@@ -314,6 +365,46 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
+    const max = chatQuotaMaxFromEnv();
+    let chat_quota:
+      | {
+          max: number;
+          remaining: number;
+          reset_at: string | null;
+          authenticated: boolean;
+        }
+      | undefined;
+
+    try {
+      const supabase = await createSupabaseServerClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        const { data: row } = await supabase
+          .from("user_chat_usage")
+          .select("chat_count, window_start")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        const peek = peekChatQuota((row as UserChatUsageRow | null) ?? null, max);
+        chat_quota = {
+          max,
+          remaining: peek.remaining,
+          reset_at: peek.resetAtIso,
+          authenticated: true,
+        };
+      } else {
+        chat_quota = {
+          max,
+          remaining: max,
+          reset_at: null,
+          authenticated: false,
+        };
+      }
+    } catch {
+      chat_quota = undefined;
+    }
+
     const aiConfig = getAIConfig();
     const gatewayProvider = createGateway({
       apiKey: aiConfig.gatewayToken,
@@ -360,6 +451,7 @@ export async function GET() {
       mcp_server_path_exists: fs.existsSync(MCP_SERVER_PATH),
       mcp_tools_count: mcpTools.length,
       mcp_tools: mcpTools,
+      chat_quota,
     });
   } catch (error) {
     const message = String(error);

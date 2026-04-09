@@ -30,12 +30,31 @@ export default function MermaidDiagramCard({
       const mermaid = (await import('mermaid')).default;
       mermaid.initialize({
         startOnLoad: false,
-        theme: 'neutral',
+        theme: 'base',
         securityLevel: 'loose',
+        fontFamily: 'var(--font-mono)',
+        themeVariables: {
+          primaryColor: '#0f172a',
+          primaryTextColor: '#ffffff',
+          primaryBorderColor: '#1e293b',
+          lineColor: '#334155',
+          secondaryColor: '#f1f5f9',
+          tertiaryColor: '#ffffff',
+          mainBkg: '#ffffff',
+          nodeBorder: '#1e293b',
+          clusterBkg: '#f8fafc',
+          clusterBorder: '#cbd5e1',
+          fontSize: '14px',
+          fontFamily: 'var(--font-mono)',
+          textColor: '#0f172a',
+          edgeLabelBackground: '#ffffff',
+          nodeTextColor: '#0f172a'
+        },
         flowchart: {
           htmlLabels: true,
           curve: 'basis',
           useMaxWidth: true,
+          padding: 24,
         },
       });
 
@@ -63,26 +82,35 @@ export default function MermaidDiagramCard({
 
   return (
     <motion.section
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 15 }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.2 }}
-      transition={{ duration: 0.4 }}
-      className="rounded-sm border border-slate-200 bg-white shadow-[0_20px_44px_-34px_rgb(15_23_42_/_0.4)]"
+      viewport={{ once: true, amount: 0.1 }}
+      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+      className="group rounded-3xl border border-slate-200 bg-white shadow-[0_32px_64px_-48px_rgba(0,0,0,0.1)] hover:shadow-[0_48px_96px_-64px_rgba(0,0,0,0.15)] transition-all duration-700 overflow-hidden"
     >
-      <div className="border-b border-slate-100 bg-slate-50/60 px-6 py-5">
-        <div className="mb-2 h-0.5 w-10 rounded-full bg-emerald-500" aria-hidden />
-        <h3 className="font-outfit text-lg font-medium tracking-tight text-slate-950">{title}</h3>
-        <p className="mt-2 text-sm leading-relaxed text-slate-600">{description}</p>
+      <div className="px-8 py-10">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="h-1 w-1 rounded-full bg-emerald-500" />
+          <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-400">Diagram Module</span>
+        </div>
+        <h3 className="font-outfit text-2xl font-medium tracking-tight text-slate-950 mb-3">{title}</h3>
+        <p className="text-base font-light leading-relaxed text-slate-500 max-w-lg">{description}</p>
       </div>
-      <div
-        ref={ref}
-        className="min-h-[220px] overflow-x-auto px-4 py-8 sm:px-6"
-        aria-label={ariaLabel}
-      />
+      
+      <div className="relative">
+        <div
+          ref={ref}
+          className="min-h-[300px] overflow-x-auto px-8 py-12 bg-slate-50/30 border-y border-slate-100 flex justify-center items-center [&_svg]:max-w-full [&_svg]:h-auto"
+          aria-label={ariaLabel}
+        />
+      </div>
+
       {caption ? (
-        <p className="border-t border-slate-100 px-6 py-4 font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-          {caption}
-        </p>
+        <div className="px-8 py-6 bg-white/80 backdrop-blur-sm">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-slate-400">
+            Note: <span className="text-slate-600">{caption}</span>
+          </p>
+        </div>
       ) : null}
     </motion.section>
   );

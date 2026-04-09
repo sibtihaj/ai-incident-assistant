@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { Brain } from 'lucide-react';
 
 const navItems = [
-  { name: 'Index', href: '/' },
+  { name: 'Home', href: '/' },
   { name: 'Playground', href: '/chat' },
   { name: 'Architecture', href: '/architecture' },
   { name: 'Chat Flow Diagram', href: '/flow' },
@@ -21,8 +22,10 @@ export default function Navbar() {
     <nav className="w-full bg-transparent">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6 lg:px-8">
         <div className="flex items-center gap-12">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="h-3 w-3 bg-slate-950 rounded-sm" aria-hidden />
+          <Link href="/" className="flex items-center gap-3 group">
+            <div className="p-1.5 rounded-lg bg-slate-950 text-white group-hover:scale-110 transition-transform duration-300">
+              <Brain className="h-4 w-4" />
+            </div>
             <span className="text-sm font-outfit font-semibold tracking-tight text-slate-950">
               IB AI Assistant
             </span>

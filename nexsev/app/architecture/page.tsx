@@ -7,10 +7,12 @@ import {
   libHelpersModuleDiagram,
   operatorSaveFlowDiagram,
   optimizedPipelineDiagram,
+  platformContextDiagram,
   toolSelectionDiagram,
 } from '@/components/architecture/diagrams';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { Brain } from 'lucide-react';
 
 const architectureSteps = [
   {
@@ -42,321 +44,262 @@ const architectureSteps = [
     title: 'Observability',
     description: 'A pluggable adapter system supports LangSmith or Langfuse for end-to-end tracing of every AI interaction and tool execution.',
     tech: 'LangSmith, Langfuse'
+  },
+  {
+    id: 'LAY-06',
+    title: 'Backend / Data (Supabase)',
+    description:
+      'Supabase Auth issues JWT-backed sessions for the playground. Postgres stores chat_sessions (RLS per user, max 20 pruned) and user_chat_usage for rolling chat quotas enforced on POST /api/chat. Login is gated with Cloudflare Turnstile plus a signed httpOnly proof cookie for retry-friendly UX.',
+    tech: 'Supabase Auth, Postgres, RLS, Turnstile'
   }
 ];
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.15,
+      delayChildren: 0.2
+    }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } }
+};
+
 export default function ArchitecturePage() {
   return (
-    <main className="mx-auto max-w-5xl px-6 py-20 lg:px-8 lg:py-32">
+    <main className="mx-auto max-w-6xl px-6 py-24 lg:px-12 lg:py-40">
+      {/* Hero Section */}
       <motion.div
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
+        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+        className="mb-32 relative z-10"
       >
-        <h1 className="text-4xl sm:text-5xl md:text-6xl font-outfit font-medium tracking-tight text-slate-950 mb-6">
-          System Architecture
+        <div className="flex items-center gap-3 mb-8 backdrop-blur-md bg-white/40 w-fit px-4 py-2 rounded-full border border-white/20 shadow-sm">
+          <div className="h-[1px] w-12 bg-slate-900" />
+          <span className="text-[10px] font-mono uppercase tracking-[0.3em] text-slate-500">System Design</span>
+        </div>
+        <h1 className="text-6xl md:text-8xl font-outfit font-medium tracking-tighter text-slate-950 mb-10 leading-[0.9]">
+          Architecture <br />
+          <span className="text-slate-400">& Schematic</span>
         </h1>
-        <p className="max-w-2xl text-lg text-slate-600 font-light leading-relaxed mb-16">
-          The AI Incident Assistant separates UI, request orchestration, model generation, and MCP tool execution into explicit boundaries with auditable decision gates.
-        </p>
-      </motion.div>
-
-      <div className="mb-24 grid grid-cols-1 gap-6">
-        <MermaidDiagramCard
-          title="Current anti-pattern"
-          description="Historical behavior combined oversized static context and duplicated history, which inflated tokens and blurred instruction focus."
-          diagram={antiPatternDiagram}
-          ariaLabel="Current anti-pattern diagram"
-          caption="Before optimization: duplicated history and oversized system context."
-        />
-        <MermaidDiagramCard
-          title="Optimized request pipeline"
-          description="Current target architecture keeps the system prompt thin, trims history using LangChain, and branches into model-only or tool-enabled execution."
-          diagram={optimizedPipelineDiagram}
-          ariaLabel="Optimized request pipeline diagram"
-          caption="After optimization: clear decision gate and bounded history."
-        />
-      </div>
-
-      {/* Components Table */}
-      <div className="border-t border-slate-200">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 py-4 border-b border-slate-200 bg-slate-50/50 px-4 text-[10px] font-mono tracking-widest text-slate-500 uppercase">
-          <div className="md:col-span-2">ID</div>
-          <div className="md:col-span-3">Subsystem</div>
-          <div className="md:col-span-7">Specification</div>
-        </div>
-
-        {architectureSteps.map((step) => (
-          <div key={step.id} className="grid grid-cols-1 md:grid-cols-12 gap-y-4 gap-x-4 py-8 border-b border-slate-100 px-4 hover:bg-slate-50/50 transition-colors">
-            <div className="md:col-span-2 text-xs font-mono text-slate-400 pt-1">
-              {step.id}
-            </div>
-            <div className="md:col-span-3 pr-4">
-              <div className="text-base font-outfit font-medium text-slate-950 mb-1 tracking-tight">{step.title}</div>
-              <div className="text-xs font-mono text-slate-500">{step.tech}</div>
-            </div>
-            <div className="md:col-span-7 text-sm text-slate-600 font-light leading-relaxed">
-              {step.description}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <section id="lib-helpers" className="mt-24 scroll-mt-24 border-t border-slate-200 pt-20">
-        <h2 className="text-2xl font-outfit font-medium text-slate-950 tracking-tight">
-          Server helpers in <code className="font-mono text-lg text-slate-800">lib/</code>
-        </h2>
-        <p className="mt-4 max-w-3xl text-sm leading-relaxed text-slate-600">
-          These modules are not separate microservices—they are TypeScript helpers used by the playground UI and the{' '}
-          <code className="font-mono text-xs text-slate-700">POST /api/chat</code> route. Together they assemble prompts,
-          classify intent, load editable config, and manage conversation metadata. The diagram below is a logical map, not a
-          deployment diagram.
-        </p>
-
-        <div className="mt-8 overflow-x-auto rounded-sm border border-slate-200 bg-white">
-          <table className="min-w-full border-collapse text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="px-3 py-2 font-mono uppercase tracking-[0.14em] text-slate-500">Module</th>
-                <th className="px-3 py-2 font-mono uppercase tracking-[0.14em] text-slate-500">Responsibility</th>
-              </tr>
-            </thead>
-            <tbody className="text-slate-600">
-              <tr className="border-b border-slate-100">
-                <td className="px-3 py-3 font-mono text-[11px] text-slate-800">promptEngine.ts</td>
-                <td className="px-3 py-3">
-                  Builds the <strong>system</strong> string from static instructions, rules, abbreviations, and field guidance.
-                  Loads <code className="font-mono text-[11px]">context.json</code> via{' '}
-                  <code className="font-mono text-[11px]">promptConfigStore</code>. Exposes{' '}
-                  <code className="font-mono text-[11px]">isConversationalQuery</code> using patterns from{' '}
-                  <code className="font-mono text-[11px]">prompt-runtime.json</code>.
-                </td>
-              </tr>
-              <tr className="border-b border-slate-100">
-                <td className="px-3 py-3 font-mono text-[11px] text-slate-800">contextDetector.ts</td>
-                <td className="px-3 py-3">
-                  Lightweight <strong>intent</strong> (technical, business, data, etc.) and <strong>entity</strong> extraction
-                  (technologies, actions, time phrases) from the user message. Feeds structured hints into{' '}
-                  <code className="font-mono text-[11px]">PromptContext</code> for routing and grounding—not a second LLM call.
-                </td>
-              </tr>
-              <tr className="border-b border-slate-100">
-                <td className="px-3 py-3 font-mono text-[11px] text-slate-800">promptConfigStore.ts</td>
-                <td className="px-3 py-3">
-                  Reads and writes <strong>context</strong> and <strong>prompt runtime</strong> JSON (validation, defaults).
-                  Backs the secured <code className="font-mono text-[11px]">/api/settings/*</code> APIs and the Settings UI when{' '}
-                  <code className="font-mono text-[11px]">ALLOW_PROMPT_EDITOR=true</code>.
-                </td>
-              </tr>
-              <tr className="border-b border-slate-100">
-                <td className="px-3 py-3 font-mono text-[11px] text-slate-800">context.json</td>
-                <td className="px-3 py-3">
-                  Runtime <strong>operator guidance</strong>: instructions, rules, abbreviations, optional{' '}
-                  <code className="font-mono text-[11px]">reference_material</code> kept out of the hottest path when slimmed.
-                </td>
-              </tr>
-              <tr className="border-b border-slate-100">
-                <td className="px-3 py-3 font-mono text-[11px] text-slate-800">prompt-runtime.json</td>
-                <td className="px-3 py-3">
-                  Tunable <strong>limits and regex lists</strong>: max history tokens, max tool steps, conversational vs actionable
-                  patterns used for the conversational vs tool-enabled branch.
-                </td>
-              </tr>
-              <tr className="border-b border-slate-100">
-                <td className="px-3 py-3 font-mono text-[11px] text-slate-800">context.json5</td>
-                <td className="px-3 py-3">
-                  Optional <strong>human-friendly duplicate</strong> of context content for editing or docs; the running app reads{' '}
-                  <code className="font-mono text-[11px]">context.json</code>. Safe to ignore at runtime unless you sync or generate
-                  JSON from it.
-                </td>
-              </tr>
-              <tr className="border-b border-slate-100">
-                <td className="px-3 py-3 font-mono text-[11px] text-slate-800">conversationManager.ts</td>
-                <td className="px-3 py-3">
-                  Client-side <strong>session identity</strong>: new session IDs, optional auto-save hooks. Persists to storage only
-                  when that path is enabled; coordinates with <code className="font-mono text-[11px]">titleGenerator</code> for
-                  thread titles.
-                </td>
-              </tr>
-              <tr className="border-b border-slate-100">
-                <td className="px-3 py-3 font-mono text-[11px] text-slate-800">conversationStorage.ts</td>
-                <td className="px-3 py-3">
-                  <strong>Pluggable persistence</strong> layer (currently a no-op stub for stateless playground mode). Swappable for
-                  localStorage or a remote store without changing the manager API.
-                </td>
-              </tr>
-              <tr>
-                <td className="px-3 py-3 font-mono text-[11px] text-slate-800">titleGenerator.ts</td>
-                <td className="px-3 py-3">
-                  Derives a <strong>short thread title</strong> from the first user message (cleanup, length cap, meaningful
-                  snippet)—used when saving or displaying conversation lists.
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div className="mt-8">
-          <MermaidDiagramCard
-            title="Helper module relationships"
-            description="How configuration flows into prompt assembly and how client-side conversation helpers sit beside the API route."
-            diagram={libHelpersModuleDiagram}
-            ariaLabel="Diagram of lib helper modules and POST api chat route"
-            caption="Dashed line: storage is currently a stub; solid lines are active code paths."
-          />
-        </div>
-      </section>
-
-      <section className="mt-24 border-t border-slate-200 pt-20">
-        <h2 className="text-2xl font-outfit font-medium text-slate-950 tracking-tight">Prompt and context optimization spec</h2>
-
-        <div className="mt-8 grid grid-cols-1 gap-8 text-sm leading-relaxed text-slate-600">
-          <article className="rounded-sm border border-slate-200 bg-white p-6">
-            <h3 className="font-outfit text-lg font-medium tracking-tight text-slate-950">Context layer today</h3>
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full border-collapse text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50">
-                    <th className="px-3 py-2 font-mono uppercase tracking-[0.14em] text-slate-500">Piece</th>
-                    <th className="px-3 py-2 font-mono uppercase tracking-[0.14em] text-slate-500">Location</th>
-                    <th className="px-3 py-2 font-mono uppercase tracking-[0.14em] text-slate-500">Role</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-b border-slate-100">
-                    <td className="px-3 py-2 text-slate-700">Static context</td>
-                    <td className="px-3 py-2 font-mono text-[11px] text-slate-500">lib/context.json</td>
-                    <td className="px-3 py-2">System instructions, rules, abbreviations, and field guidance.</td>
-                  </tr>
-                  <tr className="border-b border-slate-100">
-                    <td className="px-3 py-2 text-slate-700">Runtime detector</td>
-                    <td className="px-3 py-2 font-mono text-[11px] text-slate-500">lib/contextDetector.ts</td>
-                    <td className="px-3 py-2">Intent and entities that influence conversational vs actionable routing.</td>
-                  </tr>
-                  <tr>
-                    <td className="px-3 py-2 text-slate-700">Client session context</td>
-                    <td className="px-3 py-2 font-mono text-[11px] text-slate-500">POST /api/chat body</td>
-                    <td className="px-3 py-2">Current project and session metadata carried per request.</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </article>
-
-          <article className="rounded-sm border border-slate-200 bg-white p-6">
-            <h3 className="font-outfit text-lg font-medium tracking-tight text-slate-950">Current decisions and why they matter</h3>
-            <ul className="mt-4 space-y-2">
-              <li>System prompt now excludes duplicated user turns and history blocks.</li>
-              <li>History is trimmed with LangChain `trimMessages` before every model call.</li>
-              <li>MCP capability is inferred from registered tools instead of fake domain server lists.</li>
-              <li>Regex routing and tool loop limits are configurable via settings APIs and admin UI.</li>
-            </ul>
-          </article>
-
-          <article className="rounded-sm border border-slate-200 bg-white p-6">
-            <h3 className="font-outfit text-lg font-medium tracking-tight text-slate-950">FAQ: chat vs command vs MCP</h3>
-            <div className="mt-4 space-y-3">
-              <p><strong>How does the system differentiate chitchat from MCP commands?</strong> It combines regex routing signals with extracted action entities. Conversational messages use model-only generation; actionable messages enable tools.</p>
-              <p><strong>Does every request go to MCP?</strong> No. MCP connection and tool registration happen only on actionable requests after the decision gate.</p>
-              <p><strong>How does tool selection work?</strong> The AI SDK receives the MCP tool schemas. During generation, the model decides whether to call a tool and which one. Tool outputs feed back into subsequent generation steps.</p>
-              <p><strong>What if MCP is unavailable?</strong> The route returns a typed 503 error with remediation details instead of silently failing.</p>
-            </div>
-          </article>
-
-          <article className="rounded-sm border border-slate-200 bg-white p-6">
-            <h3 className="font-outfit text-lg font-medium tracking-tight text-slate-950">Persistence and security model</h3>
-            <ul className="mt-4 space-y-2">
-              <li>Local development can persist settings to JSON files on disk.</li>
-              <li>For serverless production, durable storage should replace file writes (Blob/DB/Redis/Edge Config).</li>
-              <li>Settings routes and APIs are gated behind <code>ALLOW_PROMPT_EDITOR=true</code>.</li>
-              <li>Navbar visibility for settings can be toggled with <code>NEXT_PUBLIC_ALLOW_PROMPT_EDITOR=true</code>.</li>
-            </ul>
-          </article>
-        </div>
-
-        <div className="mt-10 grid grid-cols-1 gap-6">
-          <MermaidDiagramCard
-            title="End-to-end runtime flow"
-            description="Request execution from user submit through API orchestration, decision gates, optional MCP calls, and response delivery."
-            diagram={endToEndRuntimeDiagram}
-            ariaLabel="End-to-end runtime flow diagram"
-            caption="Submit -> decision -> model/tool loop -> response."
-          />
-          <MermaidDiagramCard
-            title="MCP tool selection flow"
-            description="Shows how tool schemas are exposed to the model and how tool calls are selected only when needed."
-            diagram={toolSelectionDiagram}
-            ariaLabel="MCP tool selection decision flow diagram"
-            caption="Tools are model-selected per step, not forced for every request."
-          />
-          <MermaidDiagramCard
-            title="Operator configuration save flow"
-            description="Runtime config editing path from browser to authenticated API validation and persistence."
-            diagram={operatorSaveFlowDiagram}
-            ariaLabel="Operator configuration save flow diagram"
-            caption="Editor route -> validation -> persistence -> next chat reads updates."
-          />
-        </div>
-
-        <div className="mt-10 rounded-sm border border-slate-200 bg-slate-50 px-6 py-5 text-sm text-slate-600">
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-slate-500">Deep-dive</p>
-          <p className="mt-2">
-            For each file under <code className="font-mono text-xs">nexsev/lib/</code>, see{' '}
-            <Link href="#lib-helpers" className="font-medium text-emerald-700 hover:text-emerald-800">
-              Server helpers
-            </Link>{' '}
-            (above on this page). For a step-by-step runtime explainer, open{' '}
-            <Link href="/flow" className="font-medium text-emerald-700 hover:text-emerald-800">
-              Chat Flow Diagram
-            </Link>
-            . For runtime editing, use{' '}
-            <Link href="/settings" className="font-medium text-emerald-700 hover:text-emerald-800">
-              Settings
-            </Link>
-            .
+        <div className="max-w-xl backdrop-blur-lg bg-white/40 p-8 rounded-3xl border border-white/30 shadow-xl shadow-slate-200/50">
+          <p className="text-xl text-slate-600 font-light leading-relaxed">
+            A high-fidelity breakdown of how the AI Incident Assistant orchestrates UI, model generation, and tool execution.
           </p>
         </div>
+      </motion.div>
+
+      <motion.div 
+        variants={containerVariants}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: "-100px" }}
+        className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-40"
+      >
+        <motion.div variants={itemVariants}>
+          <MermaidDiagramCard
+            title="Current anti-pattern"
+            description="Historical behavior combined oversized static context and duplicated history, which inflated tokens and blurred instruction focus."
+            diagram={antiPatternDiagram}
+            ariaLabel="Current anti-pattern diagram"
+            caption="Before optimization: duplicated history and oversized system context."
+          />
+        </motion.div>
+        <motion.div variants={itemVariants}>
+          <MermaidDiagramCard
+            title="Optimized request pipeline"
+            description="Current target architecture keeps the system prompt thin, trims history using LangChain, and branches into model-only or tool-enabled execution."
+            diagram={optimizedPipelineDiagram}
+            ariaLabel="Optimized request pipeline diagram"
+            caption="After optimization: clear decision gate and bounded history."
+          />
+        </motion.div>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-100px' }}
+        transition={{ duration: 0.5 }}
+        className="mb-40"
+      >
+        <MermaidDiagramCard
+          title="Platform context"
+          description="Next.js sits in front of Supabase (auth + Postgres with RLS), Vercel AI Gateway and MCP for execution, with Turnstile and per-user quotas at the trust boundary."
+          diagram={platformContextDiagram}
+          ariaLabel="Platform context diagram with Supabase AI Gateway and MCP"
+          caption="Supabase persistence and auth alongside gateway and tool execution."
+        />
+      </motion.div>
+
+      {/* Layers Section */}
+      <section className="mb-40">
+        <div className="flex items-center gap-3 mb-16">
+          <div className="h-[1px] w-12 bg-slate-900" />
+          <h2 className="text-sm font-mono uppercase tracking-[0.3em] text-slate-950">Structural Layers</h2>
+        </div>
+        
+        <div className="space-y-px bg-slate-200 border-y border-slate-200">
+          {architectureSteps.map((step) => (
+            <motion.div 
+              key={step.id}
+              initial={{ opacity: 0, x: -10 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5 }}
+              className="group grid grid-cols-1 md:grid-cols-12 gap-8 py-12 px-6 bg-white hover:bg-slate-50/50 transition-all duration-300"
+            >
+              <div className="md:col-span-2 text-[10px] font-mono text-slate-400 pt-1 tracking-widest">
+                {step.id}
+              </div>
+              <div className="md:col-span-3">
+                <h3 className="text-xl font-outfit font-medium text-slate-950 mb-2 tracking-tight">{step.title}</h3>
+                <div className="text-[10px] font-mono text-emerald-600 uppercase tracking-wider">{step.tech}</div>
+              </div>
+              <div className="md:col-span-7 text-base text-slate-600 font-light leading-relaxed max-w-2xl">
+                {step.description}
+              </div>
+            </motion.div>
+          ))}
+        </div>
       </section>
 
-      <div className="mt-20 border-t border-slate-200 pt-12 pb-12">
-        <h2 className="text-2xl font-outfit font-medium text-slate-950 tracking-tight mb-8">Architectural Trade-offs</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-          <div className="space-y-6 text-sm text-slate-600 font-light leading-relaxed">
-            <h3 className="text-base font-outfit font-medium text-slate-950">Why trim at runtime?</h3>
-            <p>
-              Bounding history with LangChain utilities gives a predictable input envelope while preserving recent and relevant context. This lowers token spend and reduces instruction dilution.
-            </p>
-            <p>
-              The route keeps model-only and tool-enabled paths explicit so response quality remains high for simple conversational requests while still supporting deterministic MCP workflows when needed.
-            </p>
-          </div>
-          <div className="space-y-6 text-sm text-slate-600 font-light leading-relaxed">
-            <h3 className="text-base font-outfit font-medium text-slate-950">Why Vercel AI Gateway + MCP split?</h3>
-            <p>
-              The gateway provides provider abstraction, model routing, and operational visibility while MCP preserves deterministic backend actions behind typed tools.
-            </p>
-            <ul className="list-disc pl-4 space-y-3">
-              <li>
-                <strong>Model-only path:</strong> faster for normal Q&A and non-actionable chat.
-              </li>
-              <li>
-                <strong>Tool-enabled path:</strong> deterministic for incident actions, templates, and document generation.
-              </li>
-              <li>
-                <strong>Clear failure domain:</strong> MCP outages return explicit availability errors without masking model behavior.
-              </li>
-            </ul>
+      {/* Runtime Flow Section */}
+      <section className="mb-40">
+        <div className="flex items-center gap-3 mb-16">
+          <div className="h-[1px] w-12 bg-slate-900" />
+          <h2 className="text-sm font-mono uppercase tracking-[0.3em] text-slate-950">Runtime Execution</h2>
+        </div>
+        
+        <div className="grid grid-cols-1 gap-12">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.98 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            viewport={{ once: true }}
+            className="rounded-3xl border border-slate-200 bg-white p-1 overflow-hidden shadow-sm"
+          >
+            <MermaidDiagramCard
+              title="End-to-end runtime flow"
+              description="Request execution from user submit through API orchestration, decision gates, optional MCP calls, and response delivery."
+              diagram={endToEndRuntimeDiagram}
+              ariaLabel="End-to-end runtime flow diagram"
+            />
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+            >
+              <MermaidDiagramCard
+                title="MCP tool selection flow"
+                description="Shows how tool schemas are exposed to the model and how tool calls are selected only when needed."
+                diagram={toolSelectionDiagram}
+                ariaLabel="MCP tool selection decision flow diagram"
+              />
+            </motion.div>
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+            >
+              <MermaidDiagramCard
+                title="Operator configuration save flow"
+                description="Runtime config editing path from browser to authenticated API validation and persistence."
+                diagram={operatorSaveFlowDiagram}
+                ariaLabel="Operator configuration save flow diagram"
+              />
+            </motion.div>
           </div>
         </div>
-      </div>
+      </section>
+
+      {/* Lib Helpers Section */}
+      <section id="lib-helpers" className="mb-40 scroll-mt-24">
+        <div className="flex items-center gap-3 mb-16">
+          <div className="h-[1px] w-12 bg-slate-900" />
+          <h2 className="text-sm font-mono uppercase tracking-[0.3em] text-slate-950">Server Helpers</h2>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
+          <div className="lg:col-span-5">
+            <p className="text-lg text-slate-600 font-light leading-relaxed mb-12">
+              These modules are TypeScript helpers used by the playground UI and the API routes. Together they assemble prompts, classify intent, load config, and persist chat sessions through Supabase.
+            </p>
+            
+            <div className="space-y-8 relative z-10">
+              {[
+                { name: 'promptEngine.ts', desc: 'Builds the system string from static instructions and rules.' },
+                { name: 'contextDetector.ts', desc: 'Lightweight intent and entity extraction from user messages.' },
+                { name: 'promptConfigStore.ts', desc: 'Reads and writes context and prompt runtime JSON.' },
+                { name: 'chatSessions.ts', desc: 'Maps Supabase rows to typed messages for the playground UI.' },
+                { name: 'supabase/* clients', desc: 'Browser and server Supabase clients for RLS-backed CRUD and JWT refresh.' }
+              ].map((helper) => (
+                <div key={helper.name} className="border-l-2 border-slate-100 pl-6 py-4 hover:border-emerald-500 transition-all backdrop-blur-md bg-white/30 rounded-r-2xl border-y border-r border-white/20 shadow-sm">
+                  <div className="font-mono text-sm text-slate-950 mb-1">{helper.name}</div>
+                  <div className="text-sm text-slate-500 font-light">{helper.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="lg:col-span-7">
+            <MermaidDiagramCard
+              title="Helper module relationships"
+              description="How configuration flows into prompt assembly, how the chat route enforces quotas against Supabase, and how the browser client lists or saves sessions under RLS."
+              diagram={libHelpersModuleDiagram}
+              ariaLabel="Diagram of lib helper modules and POST api chat route"
+            />
+          </div>
+        </div>
+      </section>
 
       {/* Footer */}
-      <footer className="mt-32 flex flex-col sm:flex-row justify-between items-center py-8 border-t border-slate-200 text-xs font-mono text-slate-400">
-        <div>© 2026 IB AI Assistant</div>
-        <div className="flex gap-6 mt-4 sm:mt-0">
-          <Link href="/" className="hover:text-slate-900 transition-colors uppercase tracking-widest">Index</Link>
-          <Link href="/chat" className="hover:text-slate-900 transition-colors uppercase tracking-widest">Playground</Link>
-          <Link href="/flow" className="hover:text-slate-900 transition-colors uppercase tracking-widest">Chat Flow Diagram</Link>
+      <footer className="mt-40 pt-20 pb-20 border-t border-slate-200 relative z-10">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-12 backdrop-blur-xl bg-white/40 p-10 rounded-[3rem] border border-white/30 shadow-2xl shadow-slate-200/50">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-slate-950 text-white">
+                <Brain className="h-5 w-5" />
+              </div>
+              <div className="text-2xl font-outfit font-medium text-slate-950 tracking-tighter">IB AI Assistant</div>
+            </div>
+            <div className="text-[10px] font-mono text-slate-400 uppercase tracking-[0.3em] bg-slate-950/5 px-3 py-1 rounded-full w-fit">Operational Intelligence</div>
+          </div>
+          
+          <div className="flex flex-wrap gap-x-16 gap-y-8">
+            <div className="flex flex-col gap-4">
+              <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Navigation</span>
+              <div className="flex flex-col gap-2">
+                <Link href="/" className="text-sm font-outfit text-slate-600 hover:text-emerald-600 transition-colors">Home</Link>
+                <Link href="/chat" className="text-sm font-outfit text-slate-600 hover:text-emerald-600 transition-colors">Playground</Link>
+                <Link href="/architecture" className="text-sm font-outfit text-slate-600 hover:text-emerald-600 transition-colors">Architecture</Link>
+                <Link href="/flow" className="text-sm font-outfit text-slate-600 hover:text-emerald-600 transition-colors">Chat Flow Diagram</Link>
+              </div>
+            </div>
+            
+            <div className="flex flex-col gap-4">
+              <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">System</span>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2 group cursor-default">
+                  <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+                  <span className="text-sm font-outfit text-slate-600 group-hover:text-slate-950 transition-colors">Vercel AI Gateway: Nominal</span>
+                </div>
+                <div className="flex items-center gap-2 group cursor-default">
+                  <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
+                  <span className="text-sm font-outfit text-slate-600 group-hover:text-slate-950 transition-colors">MCP Layer: Active</span>
+                </div>
+                <div className="text-[10px] font-mono text-slate-400 mt-4 pt-4 border-t border-slate-100">© 2026 Architectural Spec</div>
+              </div>
+            </div>
+          </div>
         </div>
       </footer>
     </main>

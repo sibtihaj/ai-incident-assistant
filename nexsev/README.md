@@ -34,6 +34,23 @@ npm run dev
 - `ALLOW_PROMPT_EDITOR` — set to `true` to enable `/settings` and `GET`/`PUT` `/api/settings/*` (prompt/context JSON on disk locally; use durable storage on serverless prod)
 - `NEXT_PUBLIC_ALLOW_PROMPT_EDITOR` — set to `true` to show the Settings nav link (optional; API still requires `ALLOW_PROMPT_EDITOR`)
 
+### Supabase (auth + chat sessions + quota)
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` — browser and server clients; session cookies refreshed in middleware.
+- `SUPABASE_SERVICE_ROLE_KEY` — **server-only**; used by `npm run seed:admin` (never expose to the client).
+
+### Login CAPTCHA (Cloudflare Turnstile)
+- `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` — widget + siteverify on `POST /api/auth/login`.
+- `CAPTCHA_COOKIE_SECRET` — HMAC secret for signed httpOnly `login_captcha_proof` (20-minute window) so users can retry password without solving Turnstile again until expiry. **Required in production** (falls back to `TURNSTILE_SECRET_KEY` in dev only if unset).
+
+### Chat quota
+- Optional `CHAT_QUOTA_MAX` (default `15`), `CHAT_QUOTA_WINDOW_HOURS` (default `24`) — enforced server-side on `POST /api/chat` via Supabase RPC; limit is per `auth.uid()`, not the device cookie (device id is audit-only).
+
+### Seed admin (local/dev)
+```bash
+npm run seed:admin
+```
+Creates `admin@noemail.com` / `admin` if missing (uses Admin API). **Rotate the password** for any shared environment; treat as dev-only credentials.
+
 ## Implementation Notes
 - The API route intentionally remains server-side for secret safety and controlled tool execution.
 - Prompt assembly uses a thin system prompt plus LangChain `trimMessages` for bounded history; tool loops use the Vercel AI SDK with MCP-backed `dynamicTool` definitions.

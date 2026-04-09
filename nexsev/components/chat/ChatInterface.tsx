@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import MarkdownRenderer from './MarkdownRenderer'
@@ -14,11 +15,23 @@ import {
   Activity,
   Cpu,
   Wrench,
-  Loader2
+  Loader2,
+  ChevronDown,
+  ChevronUp,
+  LogOut,
+  History,
+  Trash2,
 } from 'lucide-react'
 import { Message } from '@/types/conversation'
-import { conversationManager } from '@/lib/conversationManager'
 import { DEFAULT_GATEWAY_MODEL_ID } from '@/lib/ai/constants'
+import { createSupabaseBrowserClient } from '@/lib/supabase/browser'
+import {
+  messagesToJson,
+  rowToSavedConversation,
+  type ChatSessionRow,
+} from '@/lib/chatSessions'
+import { titleGenerator } from '@/lib/titleGenerator'
+import type { SavedConversation } from '@/types/conversation'
 
 interface ChatInterfaceProps {
   className?: string
@@ -36,7 +49,7 @@ function formatMessageTime(d: Date): string {
 
 const availableTools = [
   {
-    name: 'create_incident',
+    name: 'Create Incident',
     description: 'Log a new Sev1 or critical incident.',
     prompt: `I need to log a new incident. Please call create_incident with this context:
 Customer: 
@@ -45,53 +58,68 @@ Severity:
 Status: investigating`
   },
   {
-    name: 'get_incident',
+    name: 'Get Incident',
     description: 'Retrieve details of a specific incident.',
     prompt: `Please fetch the details for incident ID: `
   },
   {
-    name: 'list_incidents',
+    name: 'List Incidents',
     description: 'List all currently tracked incidents.',
     prompt: `Please call list_incidents to show all currently tracked incidents.`
   },
   {
-    name: 'update_incident',
+    name: 'Update Incident',
     description: 'Update status or details of an existing incident.',
     prompt: `I need to update an incident. Please call update_incident.
 Incident ID: 
 New Status: `
   },
   {
-    name: 'generate_can_document',
+    name: 'Generate CAN Document',
     description: 'Generate a Customer Alert Notice.',
     prompt: `Please call generate_can_document using the current incident context to create a Customer Alert Notice.`
   },
   {
-    name: 'generate_rca_document',
+    name: 'Generate RCA Document',
     description: 'Generate a Root Cause Analysis report.',
     prompt: `Please call generate_rca_document using the current incident context to create a Root Cause Analysis report.`
   },
   {
-    name: 'get_system_status',
+    name: 'Get System Status',
     description: 'Check the health of a specific system.',
     prompt: `Please check the system status for: `
   },
   {
-    name: 'calculate_downtime',
+    name: 'Calculate Downtime',
     description: 'Calculate SLA impact and downtime duration.',
     prompt: `Please calculate the downtime for incident ID: `
   }
 ];
 
+const WELCOME_CONTENT =
+  'Playground initialized. LangChain orchestrator connected. Vercel AI Gateway nominal.\n\nReady to triage incidents or execute MCP tool workflows. How should we proceed?'
+
 export default function ChatInterface({ className }: ChatInterfaceProps) {
+  const router = useRouter()
+  const supabase = useMemo(() => createSupabaseBrowserClient(), [])
+
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [currentTypingMessageId, setCurrentTypingMessageId] = useState<string | null>(null)
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
+  const [pastSessions, setPastSessions] = useState<SavedConversation[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(true)
+  const [chatQuota, setChatQuota] = useState<{
+    max: number
+    remaining: number
+    reset_at: string | null
+    authenticated: boolean
+  } | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const [thinkingStartTime, setThinkingStartTime] = useState<number | null>(null)
+  const [isToolsCollapsed, setIsToolsCollapsed] = useState(false)
   const [serverStatus, setServerStatus] = useState<{
     llm: 'healthy' | 'error' | 'loading'
     mcp: 'healthy' | 'error' | 'loading'
@@ -111,6 +139,40 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
   const isPlaygroundInitializing =
     serverStatus.llm === 'loading' || serverStatus.mcp === 'loading'
 
+  const refreshPastSessions = useCallback(async () => {
+    if (!supabase) {
+      return
+    }
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .select('id,user_id,title,messages,created_at,updated_at')
+      .order('updated_at', { ascending: false })
+    if (error) {
+      console.error('Failed to load chat sessions', error)
+      return
+    }
+    const rows = (data ?? []) as ChatSessionRow[]
+    setPastSessions(rows.map((r) => rowToSavedConversation(r)))
+  }, [supabase])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!supabase) {
+        setSessionsLoading(false)
+        return
+      }
+      setSessionsLoading(true)
+      await refreshPastSessions()
+      if (!cancelled) {
+        setSessionsLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [refreshPastSessions, supabase])
+
   useEffect(() => {
     setPlaygroundInitClock(formatMessageTime(new Date()))
   }, [])
@@ -127,7 +189,7 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
       setMessages([
         {
           id: '1',
-          content: 'Playground initialized. LangChain orchestrator connected. Vercel AI Gateway nominal.\n\nReady to triage incidents or execute MCP tool workflows. How should we proceed?',
+          content: WELCOME_CONTENT,
           sender: 'ai',
           timestamp: new Date(),
           metadata: {
@@ -154,6 +216,57 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
   }, [serverStatus.llm, serverStatus.llmError, messages.length, gatewayModelLabel])
 
   useEffect(() => {
+    const hasUserMessage = messages.some((m) => m.sender === 'user')
+    if (!hasUserMessage || !supabase) {
+      return
+    }
+
+    const handle = window.setTimeout(async () => {
+      const title = titleGenerator.generateTitle(messages)
+      const payload = messagesToJson(messages)
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) {
+        return
+      }
+
+      if (currentConversationId) {
+        const { error } = await supabase
+          .from('chat_sessions')
+          .update({
+            title,
+            messages: payload,
+          })
+          .eq('id', currentConversationId)
+        if (error) {
+          console.error('Failed to update chat session', error)
+        }
+      } else {
+        const { data, error } = await supabase
+          .from('chat_sessions')
+          .insert({
+            user_id: user.id,
+            title,
+            messages: payload,
+          })
+          .select('id')
+          .single()
+        if (error) {
+          console.error('Failed to insert chat session', error)
+          return
+        }
+        if (data?.id) {
+          setCurrentConversationId(data.id as string)
+        }
+      }
+      await refreshPastSessions()
+    }, 1500)
+
+    return () => window.clearTimeout(handle)
+  }, [messages, currentConversationId, supabase, refreshPastSessions])
+
+  useEffect(() => {
     if (!thinkingStartTime) {
       setThinkingMessage("Processing request...")
       return
@@ -175,7 +288,7 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
   useEffect(() => {
     const checkServerStatus = async () => {
       try {
-        const response = await fetch('/api/chat')
+        const response = await fetch('/api/chat', { credentials: 'same-origin' })
         if (response.ok) {
           const data = (await response.json()) as {
             llm_status?: string
@@ -184,6 +297,12 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
             mcp_error?: string
             error?: string
             current_model?: string
+            chat_quota?: {
+              max: number
+              remaining: number
+              reset_at: string | null
+              authenticated: boolean
+            }
           }
           setServerStatus({
             llm: data.llm_status === 'healthy' ? 'healthy' : 'error',
@@ -193,6 +312,9 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
           })
           if (data.current_model?.trim()) {
             setGatewayModelLabel(data.current_model.trim())
+          }
+          if (data.chat_quota) {
+            setChatQuota(data.chat_quota)
           }
         } else {
           setServerStatus(prev => ({ ...prev, llm: 'error', mcp: 'error' }))
@@ -211,8 +333,71 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
     scrollToBottom()
   }, [messages])
 
+  const quotaBlocksSend =
+    chatQuota !== null && chatQuota.authenticated && chatQuota.remaining <= 0
+
+  const loadSession = async (id: string) => {
+    if (!supabase) {
+      return
+    }
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle()
+    if (error || !data) {
+      console.error('Failed to load session', error)
+      return
+    }
+    const conv = rowToSavedConversation(data as ChatSessionRow)
+    setCurrentConversationId(conv.id)
+    if (conv.messages.length > 0) {
+      setMessages(conv.messages)
+    } else {
+      setMessages([
+        {
+          id: Date.now().toString(),
+          content: WELCOME_CONTENT,
+          sender: 'ai',
+          timestamp: new Date(),
+          metadata: {
+            model: gatewayModelLabel ?? DEFAULT_GATEWAY_MODEL_ID,
+          },
+        },
+      ])
+    }
+    setError(null)
+    setCurrentTypingMessageId(null)
+    setIsLoading(false)
+    setThinkingStartTime(null)
+  }
+
+  const deleteSession = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!supabase) {
+      return
+    }
+    const { error } = await supabase.from('chat_sessions').delete().eq('id', id)
+    if (error) {
+      console.error('Failed to delete session', error)
+      return
+    }
+    if (currentConversationId === id) {
+      handleNewConversation()
+    }
+    await refreshPastSessions()
+  }
+
+  const handleSignOut = async () => {
+    if (supabase) {
+      await supabase.auth.signOut()
+    }
+    router.push('/login')
+    router.refresh()
+  }
+
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || isLoading || isPlaygroundInitializing) return
+    if (!inputValue.trim() || isLoading || isPlaygroundInitializing || quotaBlocksSend) return
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -229,11 +414,6 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
     setThinkingStartTime(Date.now())
     setError(null)
 
-    if (!currentConversationId) {
-      const newConversationId = conversationManager.startNewConversation()
-      setCurrentConversationId(newConversationId)
-    }
-
     const controller = new AbortController()
     abortControllerRef.current = controller
 
@@ -243,6 +423,7 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'same-origin',
         signal: controller.signal,
         body: JSON.stringify({
           message: messageToSend,
@@ -251,8 +432,37 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
         }),
       })
 
+      if (response.status === 401) {
+        router.push('/login?next=/chat')
+        throw new Error('Session expired. Please sign in again.')
+      }
+
       if (!response.ok) {
-        const errorData = await response.json()
+        const errorData = (await response.json().catch(() => ({}))) as {
+          error?: string
+          code?: string
+          resetAt?: string
+          remaining?: number
+        }
+        if (response.status === 429 && errorData.code === 'CHAT_QUOTA_EXCEEDED') {
+          setChatQuota((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  remaining: errorData.remaining ?? 0,
+                }
+              : {
+                  max: 15,
+                  remaining: errorData.remaining ?? 0,
+                  reset_at: errorData.resetAt ?? null,
+                  authenticated: true,
+                }
+          )
+          throw new Error(
+            errorData.error ??
+              'Daily chat limit reached. Try again after the window resets.'
+          )
+        }
         throw new Error(errorData.error || 'Failed to get AI response')
       }
 
@@ -279,6 +489,26 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
       setIsLoading(false)
       setThinkingStartTime(null)
       setCurrentTypingMessageId(aiMessageId)
+
+      void fetch('/api/chat', { credentials: 'same-origin' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then(
+          (
+            d: {
+              chat_quota?: {
+                max: number
+                remaining: number
+                reset_at: string | null
+                authenticated: boolean
+              }
+            } | null
+          ) => {
+            if (d?.chat_quota) {
+              setChatQuota(d.chat_quota)
+            }
+          }
+        )
+        .catch(() => {})
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         setIsLoading(false)
@@ -310,12 +540,11 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
   }
 
   const handleNewConversation = () => {
-    const newConversationId = conversationManager.startNewConversation()
-    setCurrentConversationId(newConversationId)
+    setCurrentConversationId(null)
     setMessages([
       {
         id: Date.now().toString(),
-        content: 'Playground initialized. LangChain orchestrator connected. Vercel AI Gateway nominal.\n\nReady to triage incidents or execute MCP tool workflows. How should we proceed?',
+        content: WELCOME_CONTENT,
         sender: 'ai',
         timestamp: new Date(),
         metadata: {
@@ -342,9 +571,21 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
         <div className="p-6 border-b border-slate-200">
           <div className="flex items-center justify-between mb-8">
             <h2 className="text-sm font-outfit font-bold text-slate-900 uppercase tracking-widest">Playground</h2>
-            <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-slate-900 rounded-sm">
-              <Settings className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-slate-400 hover:text-slate-900 rounded-sm"
+                title="Sign out"
+                onClick={() => void handleSignOut()}
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-slate-900 rounded-sm">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           
           <Button 
@@ -355,14 +596,67 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
             New Session
           </Button>
 
+          <div className="mt-6 space-y-3">
+            <h3 className="text-[10px] font-mono text-slate-400 uppercase tracking-widest flex items-center gap-2">
+              <History className="h-3 w-3" />
+              Past Sessions
+            </h3>
+            <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+              {!supabase ? (
+                <p className="text-[11px] font-outfit text-amber-800 bg-amber-50 border border-amber-100 rounded-sm px-2 py-2">
+                  Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to load saved sessions.
+                </p>
+              ) : sessionsLoading ? (
+                <p className="text-[11px] font-outfit text-slate-500">Loading…</p>
+              ) : pastSessions.length === 0 ? (
+                <p className="text-[11px] font-outfit text-slate-500">No saved sessions yet.</p>
+              ) : (
+                pastSessions.map((s) => (
+                  <div
+                    key={s.id}
+                    className={`group flex items-stretch gap-1 rounded-sm border ${
+                      currentConversationId === s.id
+                        ? 'border-slate-900 bg-white'
+                        : 'border-slate-200 bg-white hover:border-slate-400'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => void loadSession(s.id)}
+                      className="min-w-0 flex-1 text-left px-3 py-2"
+                    >
+                      <div className="truncate font-mono text-[11px] font-semibold text-slate-900">
+                        {s.title}
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-400">
+                        {s.messageCount} msgs · {formatMessageTime(s.updatedAt)}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      title="Delete session"
+                      onClick={(e) => void deleteSession(s.id, e)}
+                      className="shrink-0 px-2 text-slate-300 hover:text-red-600 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
           {/* System Status */}
           <div className="mt-8 space-y-4">
-            <h3 className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">Telemetry</h3>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs font-mono">
-                <span className="text-slate-500">Gateway</span>
+            <h3 className="text-[10px] font-mono text-slate-400 uppercase tracking-widest flex items-center gap-2">
+              <div className="h-1 w-1 rounded-full bg-emerald-500 animate-pulse" />
+              Telemetry
+            </h3>
+            <div className="space-y-4 backdrop-blur-md bg-slate-50/50 p-4 rounded-xl border border-slate-100">
+              <div className="flex items-center justify-between text-[11px] font-mono">
+                <span className="text-slate-400 uppercase tracking-wider">Gateway</span>
                 <span
-                  className={`inline-flex items-center gap-1.5 uppercase tracking-wide ${
+                  className={`inline-flex items-center gap-1.5 font-bold ${
                     serverStatus.llm === 'loading'
                       ? 'text-amber-600'
                       : serverStatus.llm === 'healthy'
@@ -380,10 +674,10 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
                       : 'ERR'}
                 </span>
               </div>
-              <div className="flex items-center justify-between text-xs font-mono">
-                <span className="text-slate-500">MCP Transport</span>
+              <div className="flex items-center justify-between text-[11px] font-mono">
+                <span className="text-slate-400 uppercase tracking-wider">Transport</span>
                 <span
-                  className={`inline-flex items-center gap-1.5 uppercase tracking-wide ${
+                  className={`inline-flex items-center gap-1.5 font-bold ${
                     serverStatus.mcp === 'loading'
                       ? 'text-amber-600'
                       : serverStatus.mcp === 'healthy'
@@ -401,41 +695,70 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
                       : 'ERR'}
                 </span>
               </div>
-              <div className="rounded-sm border border-slate-200 bg-white p-3 shadow-sm">
-                <div className="mb-1.5 text-[10px] font-mono uppercase tracking-widest text-slate-400">
-                  Gateway model
-                </div>
-                <p className="break-all font-mono text-xs font-semibold leading-snug text-slate-950">
+              <div className="flex flex-col gap-1.5 pt-3 border-t border-slate-200/50">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-slate-400">Model ID</span>
+                <span className="break-all font-mono text-[10px] font-medium leading-tight text-slate-500 uppercase tracking-tight">
                   {gatewayModelLabel ?? DEFAULT_GATEWAY_MODEL_ID}
-                </p>
+                </span>
               </div>
+              {chatQuota?.authenticated && (
+                <div className="flex flex-col gap-1 pt-3 border-t border-slate-200/50">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-slate-400">
+                    Chat quota
+                  </span>
+                  <span className="font-mono text-[10px] font-medium text-slate-600">
+                    {chatQuota.remaining} / {chatQuota.max} left (24h rolling)
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
         {/* Available Tools */}
-        <div className="flex-1 overflow-y-auto p-6 scrollbar-none">
-          <h3 className="text-[10px] font-mono text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-            <Wrench className="h-3 w-3" />
-            Registered Tools
-          </h3>
-          <div className="space-y-2">
-            {availableTools.map((tool) => (
-              <button
-                key={tool.name}
-                onClick={() => insertToolPrompt(tool.prompt)}
-                className="w-full text-left group p-3 border border-slate-200 bg-white hover:border-slate-400 transition-colors rounded-sm"
-              >
-                <div className="font-mono text-xs font-bold text-slate-900 mb-1 flex items-center justify-between">
-                  {tool.name}
-                  <span className="opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity">→</span>
-                </div>
-                <div className="text-[10px] font-outfit text-slate-500 leading-relaxed">
-                  {tool.description}
-                </div>
-              </button>
-            ))}
-          </div>
+        <div className="flex-1 overflow-y-auto p-6 scrollbar-none border-t border-slate-100">
+          <button 
+            onClick={() => setIsToolsCollapsed(!isToolsCollapsed)}
+            className="w-full flex items-center justify-between text-[10px] font-mono text-slate-400 uppercase tracking-widest mb-4 group hover:text-slate-600 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Wrench className="h-3 w-3" />
+              Registered Tools
+            </div>
+            {isToolsCollapsed ? (
+              <ChevronDown className="h-3 w-3 group-hover:translate-y-0.5 transition-transform" />
+            ) : (
+              <ChevronUp className="h-3 w-3 group-hover:-translate-y-0.5 transition-transform" />
+            )}
+          </button>
+          
+          <motion.div 
+            initial={false}
+            animate={{ 
+              height: isToolsCollapsed ? 0 : 'auto',
+              opacity: isToolsCollapsed ? 0 : 1
+            }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="space-y-2 pb-4">
+              {availableTools.map((tool) => (
+                <button
+                  key={tool.name}
+                  onClick={() => insertToolPrompt(tool.prompt)}
+                  className="w-full text-left group p-3 border border-slate-200 bg-white hover:border-slate-400 transition-colors rounded-sm"
+                >
+                  <div className="font-mono text-xs font-bold text-slate-900 mb-1 flex items-center justify-between">
+                    {tool.name}
+                    <span className="opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity">→</span>
+                  </div>
+                  <div className="text-[10px] font-outfit text-slate-500 leading-relaxed">
+                    {tool.description}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </motion.div>
         </div>
       </div>
 
@@ -567,13 +890,19 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
         {/* Input Area — pinned to bottom of chat column (viewport below navbar) */}
         <div className="shrink-0 border-t border-slate-200 bg-white p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-[0_-8px_30px_-12px_rgba(15,23,42,0.12)] sm:p-8 sm:pb-[max(2rem,env(safe-area-inset-bottom))]">
           <div className="max-w-3xl mx-auto relative">
+            {quotaBlocksSend && (
+              <div className="mb-3 rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-outfit text-amber-950">
+                Daily chat quota reached for this account. Resets after the rolling window shown in
+                telemetry when available.
+              </div>
+            )}
             <Textarea
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="Enter command or natural language instruction..."
               className="min-h-[100px] w-full resize-none border-slate-200 bg-slate-50 rounded-sm p-4 text-sm font-outfit focus:border-slate-900 focus:ring-0 transition-colors pb-14"
-              disabled={isLoading || isPlaygroundInitializing}
+              disabled={isLoading || isPlaygroundInitializing || quotaBlocksSend}
             />
             
             <div className="absolute bottom-4 right-4 flex items-center gap-2">
@@ -590,7 +919,9 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
               )}
               <Button
                 onClick={handleSendMessage}
-                disabled={!inputValue.trim() || isLoading || isPlaygroundInitializing}
+                disabled={
+                  !inputValue.trim() || isLoading || isPlaygroundInitializing || quotaBlocksSend
+                }
                 className="h-8 bg-slate-950 hover:bg-slate-800 text-white rounded-sm text-xs font-mono uppercase px-4"
               >
                 Execute
