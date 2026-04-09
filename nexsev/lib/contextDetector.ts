@@ -8,6 +8,9 @@ export interface Entities {
 }
 
 export class ContextDetector {
+  private static readonly actionablePattern =
+    /(deploy|fix|investigate|analyze|restart|upgrade|rollback|check|review|update|create|delete|generate|search|find|list|load|call)\b/i;
+
   static detectIntent(userInput: string): Intent {
     const intents: Record<Intent, RegExp> = {
       technical: /code|debug|error|api|database|function|deploy|incident|log|stack|infra|terraform|vault|consul/i,
@@ -44,5 +47,9 @@ export class ContextDetector {
     const actionPattern = /(deploy|fix|investigate|analyze|restart|upgrade|rollback|check|review|update|create|delete)/gi;
     entities.actions = userInput.match(actionPattern) || [];
     return entities;
+  }
+
+  static isActionableInput(userInput: string): boolean {
+    return this.actionablePattern.test(userInput);
   }
 } 

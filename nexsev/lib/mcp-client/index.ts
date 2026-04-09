@@ -6,7 +6,7 @@ import path from "path";
 export interface MCPTool {
   name: string;
   description: string;
-  inputSchema?: any;
+  inputSchema?: Record<string, unknown>;
 }
 
 export class MCPClient {
@@ -66,9 +66,13 @@ export class MCPClient {
       const toolsResult = await this.client.listTools(
         cursor ? { cursor } : undefined
       );
-      const batch = (toolsResult.tools || []).map((tool: any) => ({
+      const batch = (toolsResult.tools || []).map((tool: {
+        name: string;
+        description?: string;
+        inputSchema?: Record<string, unknown>;
+      }) => ({
         name: tool.name,
-        description: tool.description,
+        description: tool.description ?? "",
         inputSchema: tool.inputSchema,
       }));
       aggregated.push(...batch);
@@ -164,7 +168,10 @@ export class MCPClient {
    * @param toolName Name of the tool to call
    * @param args Arguments to pass to the tool
    */
-  async callTool(toolName: string, args: Record<string, any> = {}): Promise<any> {
+  async callTool(
+    toolName: string,
+    args: Record<string, unknown> = {}
+  ): Promise<unknown> {
     if (!this.connected) {
       throw new Error("Not connected to MCP server");
     }

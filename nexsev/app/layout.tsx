@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Exo, Outfit } from "next/font/google";
 import "./globals.css";
-import ArchitectureNotice from "@/components/layout/ArchitectureNotice";
 import Navbar from "@/components/layout/Navbar";
 
 const exo = Exo({
@@ -58,7 +57,7 @@ export default function RootLayout({
         className={`${exo.variable} ${outfit.variable} font-outfit antialiased bg-slate-50 text-slate-900`}
         suppressHydrationWarning
       >
-        <div className="min-h-screen relative overflow-hidden flex flex-col">
+        <div className="min-h-screen relative flex flex-col overflow-x-hidden">
           {/* Base Laboratory Background */}
           <div className="absolute inset-0 bg-white"></div>
           
@@ -68,11 +67,11 @@ export default function RootLayout({
           {/* Soft Gradient Accents */}
           <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.03)_0%,transparent_50%)]"></div>
 
-          <Navbar />
-          <ArchitectureNotice />
-          
-          {/* Content */}
-          <div className="relative z-10 flex-1 flex flex-col">
+          <header className="sticky top-0 z-50 shrink-0 w-full border-b border-slate-200 bg-white/90 backdrop-blur-md">
+            <Navbar />
+          </header>
+
+          <div className="relative z-10 flex min-h-0 flex-1 flex-col">
             {children}
           </div>
         </div>

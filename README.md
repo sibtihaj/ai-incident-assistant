@@ -1,13 +1,13 @@
 # AI Incident Assistant
 
-AI Incident Assistant is a revamp of the previous incident chatbot into a production-oriented incident response workspace.
+AI Incident Assistant is a revamp of the previous incident chatbot into a production-oriented incident response playground.
 
 ## Revamp Summary
 - Rebranded from legacy Nexsev naming to **AI Incident Assistant**.
 - Migrated model orchestration to **LangChain**.
 - Migrated model access to **Vercel AI Gateway** (instead of direct Google/Ollama integration).
 - Hardened MCP integration for stronger validation, timeout handling, and safer tool execution.
-- Added a dedicated landing page at `/` and moved the chat workspace to `/chat`.
+- Added a dedicated landing page at `/` and moved the chat playground to `/chat`.
 
 ## How The Revamp Was Done
 1. Replaced provider-specific orchestration in `nexsev/app/api/chat/route.ts` with LangChain message + tool flow.
@@ -64,7 +64,7 @@ Then open [http://localhost:3000](http://localhost:3000).
 
 ## Required Environment Variables
 In `nexsev`:
-- `AI_GATEWAY_MODEL` (example: `openai/gpt-5.4`)
+- `AI_GATEWAY_MODEL` (example: `openai/gpt-5-nano`)
 - `VERCEL_OIDC_TOKEN` (preferred on linked Vercel workflows) or `AI_GATEWAY_API_KEY`
 - `AI_GATEWAY_BASE_URL` (optional, defaults to `https://ai-gateway.vercel.sh/v1`)
 - `OBSERVABILITY_PROVIDER` (`langsmith`, `langfuse`, or omit for none)

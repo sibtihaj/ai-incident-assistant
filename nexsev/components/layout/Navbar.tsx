@@ -5,15 +5,20 @@ import { usePathname } from 'next/navigation';
 
 const navItems = [
   { name: 'Index', href: '/' },
-  { name: 'Workspace', href: '/chat' },
+  { name: 'Playground', href: '/chat' },
   { name: 'Architecture', href: '/architecture' },
+  { name: 'Chat Flow Diagram', href: '/flow' },
 ];
 
 export default function Navbar() {
   const pathname = usePathname();
+  const showSettings = process.env.NEXT_PUBLIC_ALLOW_PROMPT_EDITOR === 'true';
+  const displayedNavItems = showSettings
+    ? [...navItems, { name: 'Settings', href: '/settings' }]
+    : navItems;
 
   return (
-    <nav className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/90 backdrop-blur-md">
+    <nav className="w-full bg-transparent">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6 lg:px-8">
         <div className="flex items-center gap-12">
           <Link href="/" className="flex items-center gap-3">
@@ -24,7 +29,7 @@ export default function Navbar() {
           </Link>
 
           <div className="hidden md:flex items-center gap-6">
-            {navItems.map((item) => {
+            {displayedNavItems.map((item) => {
               const isActive = pathname === item.href;
               return (
                 <Link
@@ -41,16 +46,14 @@ export default function Navbar() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span className="text-[10px] font-mono tracking-widest text-slate-500 uppercase">
-              Operational
-            </span>
-          </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span className="text-[10px] font-mono tracking-widest text-slate-500 uppercase">
+            Operational
+          </span>
         </div>
       </div>
     </nav>

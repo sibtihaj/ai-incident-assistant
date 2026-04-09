@@ -5,22 +5,33 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import MarkdownRenderer from './MarkdownRenderer'
 import { motion } from 'framer-motion'
-import { 
-  Send, 
-  Terminal, 
-  Settings, 
-  Plus, 
-  Clock,
+import {
+  Send,
+  Terminal,
+  Settings,
+  Plus,
   Square,
   Activity,
   Cpu,
-  Wrench
+  Wrench,
+  Loader2
 } from 'lucide-react'
-import { Message, SavedConversation } from '@/types/conversation'
+import { Message } from '@/types/conversation'
 import { conversationManager } from '@/lib/conversationManager'
+import { DEFAULT_GATEWAY_MODEL_ID } from '@/lib/ai/constants'
 
 interface ChatInterfaceProps {
   className?: string
+}
+
+/** Fixed options so SSR (Node) and the browser produce the same string — avoids hydration mismatches. */
+function formatMessageTime(d: Date): string {
+  return d.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
 }
 
 const availableTools = [
@@ -77,10 +88,9 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [shouldStopGeneration, setShouldStopGeneration] = useState(false)
   const [currentTypingMessageId, setCurrentTypingMessageId] = useState<string | null>(null)
-  const [conversationHistory, setConversationHistory] = useState<SavedConversation[]>([])
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
   const [thinkingStartTime, setThinkingStartTime] = useState<number | null>(null)
   const [serverStatus, setServerStatus] = useState<{
     llm: 'healthy' | 'error' | 'loading'
@@ -91,8 +101,19 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
     llm: 'loading',
     mcp: 'loading'
   })
-  const [context, setContext] = useState<any>({})
+  const [context, setContext] = useState<Record<string, unknown>>({})
+  /** Resolved from GET /api/chat `current_model` for welcome message metadata */
+  const [gatewayModelLabel, setGatewayModelLabel] = useState<string | undefined>()
+  /** Set after mount so server and first client paint match (no Date in SSR HTML). */
+  const [playgroundInitClock, setPlaygroundInitClock] = useState('—')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const isPlaygroundInitializing =
+    serverStatus.llm === 'loading' || serverStatus.mcp === 'loading'
+
+  useEffect(() => {
+    setPlaygroundInitClock(formatMessageTime(new Date()))
+  }, [])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -106,25 +127,31 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
       setMessages([
         {
           id: '1',
-          content: 'Workspace initialized. LangChain orchestrator connected. Vercel AI Gateway nominal.\n\nReady to triage incidents or execute MCP tool workflows. How should we proceed?',
+          content: 'Playground initialized. LangChain orchestrator connected. Vercel AI Gateway nominal.\n\nReady to triage incidents or execute MCP tool workflows. How should we proceed?',
           sender: 'ai',
           timestamp: new Date(),
           metadata: {
-            model: 'openai/gpt-5.4' // Or dynamic from status if available
+            model: gatewayModelLabel ?? DEFAULT_GATEWAY_MODEL_ID
           }
         }
       ]);
     } else if (serverStatus.llm === 'error' && messages.length === 0) {
+      const detail = serverStatus.llmError?.trim()
+      const safeDetail =
+        detail && detail.length > 600 ? `${detail.slice(0, 600)}…` : detail
+      const content = safeDetail
+        ? `System Error: cannot reach Vercel AI Gateway.\n\nDetails: ${safeDetail}`
+        : 'System Error: Cannot connect to Vercel AI Gateway. Please check your credentials and network connection.'
       setMessages([
         {
           id: '1',
-          content: 'System Error: Cannot connect to Vercel AI Gateway. Please check your credentials and network connection.',
+          content,
           sender: 'ai',
           timestamp: new Date(),
         }
       ]);
     }
-  }, [serverStatus.llm, messages.length])
+  }, [serverStatus.llm, serverStatus.llmError, messages.length, gatewayModelLabel])
 
   useEffect(() => {
     if (!thinkingStartTime) {
@@ -142,7 +169,7 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
   }, [thinkingStartTime])
 
   const stopGeneration = () => {
-    setShouldStopGeneration(true)
+    abortControllerRef.current?.abort()
   }
 
   useEffect(() => {
@@ -150,17 +177,27 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
       try {
         const response = await fetch('/api/chat')
         if (response.ok) {
-          const data = await response.json()
+          const data = (await response.json()) as {
+            llm_status?: string
+            mcp_status?: string
+            llm_error?: string
+            mcp_error?: string
+            error?: string
+            current_model?: string
+          }
           setServerStatus({
-            llm: data.llm_status || 'error',
-            mcp: data.mcp_status || 'error',
-            llmError: data.llm_error,
+            llm: data.llm_status === 'healthy' ? 'healthy' : 'error',
+            mcp: data.mcp_status === 'healthy' ? 'healthy' : 'error',
+            llmError: data.llm_error ?? data.error,
             mcpError: data.mcp_error
           })
+          if (data.current_model?.trim()) {
+            setGatewayModelLabel(data.current_model.trim())
+          }
         } else {
           setServerStatus(prev => ({ ...prev, llm: 'error', mcp: 'error' }))
         }
-      } catch (error) {
+      } catch {
         setServerStatus(prev => ({ ...prev, llm: 'error', mcp: 'error' }))
       }
     }
@@ -175,7 +212,7 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
   }, [messages])
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || isLoading) return
+    if (!inputValue.trim() || isLoading || isPlaygroundInitializing) return
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -197,12 +234,16 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
       setCurrentConversationId(newConversationId)
     }
 
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: controller.signal,
         body: JSON.stringify({
           message: messageToSend,
           conversationHistory: newMessages.slice(-20),
@@ -238,14 +279,17 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
       setIsLoading(false)
       setThinkingStartTime(null)
       setCurrentTypingMessageId(aiMessageId)
-      setShouldStopGeneration(false)
-
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        setIsLoading(false)
+        setThinkingStartTime(null)
+        return
+      }
       console.error('Error sending message:', error)
       setError(error instanceof Error ? error.message : 'System fault')
       setIsLoading(false)
       setThinkingStartTime(null)
-      
+
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         content: 'System Error: Failed to execute operational loop. Verify Gateway credentials and MCP transport.',
@@ -253,6 +297,8 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
         timestamp: new Date()
       }
       setMessages(prev => [...prev, errorMessage])
+    } finally {
+      abortControllerRef.current = null
     }
   }
 
@@ -269,11 +315,11 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
     setMessages([
       {
         id: Date.now().toString(),
-        content: 'Workspace initialized. LangChain orchestrator connected. Vercel AI Gateway nominal.\n\nReady to triage incidents or execute MCP tool workflows. How should we proceed?',
+        content: 'Playground initialized. LangChain orchestrator connected. Vercel AI Gateway nominal.\n\nReady to triage incidents or execute MCP tool workflows. How should we proceed?',
         sender: 'ai',
         timestamp: new Date(),
         metadata: {
-          model: 'openai/gpt-5.4'
+          model: gatewayModelLabel ?? DEFAULT_GATEWAY_MODEL_ID
         }
       }
     ])
@@ -281,7 +327,6 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
     setIsLoading(false)
     setThinkingStartTime(null)
     setError(null)
-    setShouldStopGeneration(false)
     setCurrentTypingMessageId(null)
   }
 
@@ -290,13 +335,13 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
   }
 
   return (
-    <div className={`flex h-[calc(100vh-56px)] w-full bg-white overflow-hidden ${className}`}>
+    <div className={`flex h-full min-h-0 w-full flex-1 overflow-hidden bg-white ${className}`}>
       
       {/* Sidebar - Tool Registry */}
       <div className="w-80 h-full border-r border-slate-200 bg-slate-50 flex flex-col flex-shrink-0">
         <div className="p-6 border-b border-slate-200">
           <div className="flex items-center justify-between mb-8">
-            <h2 className="text-sm font-outfit font-bold text-slate-900 uppercase tracking-widest">Workspace</h2>
+            <h2 className="text-sm font-outfit font-bold text-slate-900 uppercase tracking-widest">Playground</h2>
             <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-slate-900 rounded-sm">
               <Settings className="h-4 w-4" />
             </Button>
@@ -316,15 +361,53 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs font-mono">
                 <span className="text-slate-500">Gateway</span>
-                <span className={serverStatus.llm === 'healthy' ? 'text-emerald-600' : 'text-red-600'}>
-                  {serverStatus.llm === 'healthy' ? 'ONLINE' : 'ERR'}
+                <span
+                  className={`inline-flex items-center gap-1.5 uppercase tracking-wide ${
+                    serverStatus.llm === 'loading'
+                      ? 'text-amber-600'
+                      : serverStatus.llm === 'healthy'
+                        ? 'text-emerald-600'
+                        : 'text-red-600'
+                  }`}
+                >
+                  {serverStatus.llm === 'loading' && (
+                    <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden />
+                  )}
+                  {serverStatus.llm === 'loading'
+                    ? 'LOADING'
+                    : serverStatus.llm === 'healthy'
+                      ? 'ONLINE'
+                      : 'ERR'}
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs font-mono">
                 <span className="text-slate-500">MCP Transport</span>
-                <span className={serverStatus.mcp === 'healthy' ? 'text-emerald-600' : 'text-red-600'}>
-                  {serverStatus.mcp === 'healthy' ? 'ONLINE' : 'ERR'}
+                <span
+                  className={`inline-flex items-center gap-1.5 uppercase tracking-wide ${
+                    serverStatus.mcp === 'loading'
+                      ? 'text-amber-600'
+                      : serverStatus.mcp === 'healthy'
+                        ? 'text-emerald-600'
+                        : 'text-red-600'
+                  }`}
+                >
+                  {serverStatus.mcp === 'loading' && (
+                    <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden />
+                  )}
+                  {serverStatus.mcp === 'loading'
+                    ? 'LOADING'
+                    : serverStatus.mcp === 'healthy'
+                      ? 'ONLINE'
+                      : 'ERR'}
                 </span>
+              </div>
+              <div className="rounded-sm border border-slate-200 bg-white p-3 shadow-sm">
+                <div className="mb-1.5 text-[10px] font-mono uppercase tracking-widest text-slate-400">
+                  Gateway model
+                </div>
+                <p className="break-all font-mono text-xs font-semibold leading-snug text-slate-950">
+                  {gatewayModelLabel ?? DEFAULT_GATEWAY_MODEL_ID}
+                </p>
               </div>
             </div>
           </div>
@@ -356,25 +439,66 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
         </div>
       </div>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col h-full relative bg-white">
-        
+      {/* Main Chat Area — min-h-0 so messages scroll and input stays at bottom */}
+      <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-white">
         {/* Header */}
-        <div className="h-14 border-b border-slate-200 flex items-center justify-between px-8 bg-white flex-shrink-0">
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-8">
           <div className="flex items-center gap-3">
             <Terminal className="h-4 w-4 text-slate-900" />
             <span className="text-sm font-outfit font-medium text-slate-900">Incident Terminal</span>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-3 sm:gap-4">
+            <div
+              className="flex min-w-0 max-w-[70vw] items-center gap-2"
+              title="Active Vercel AI Gateway model"
+            >
+              <Cpu className="h-3.5 w-3.5 shrink-0 text-emerald-500" aria-hidden />
+              <span className="truncate font-mono text-xs font-medium tracking-widest text-slate-700 uppercase">
+                {gatewayModelLabel ?? DEFAULT_GATEWAY_MODEL_ID}
+              </span>
+            </div>
+            <span className="hidden shrink-0 text-[10px] font-mono uppercase tracking-widest text-slate-400 xl:inline">
               Engine: LangChain
             </span>
           </div>
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-8 py-8 scrollbar-none">
+        <div className="min-h-0 flex-1 overflow-y-auto px-8 py-8 scrollbar-none">
           <div className="max-w-3xl mx-auto space-y-12">
+            {isPlaygroundInitializing && messages.length === 0 && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex flex-col items-start"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-slate-400">
+                    System
+                  </span>
+                  <span className="text-slate-300">/</span>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    {playgroundInitClock}
+                  </span>
+                </div>
+                <div className="w-full border border-slate-200 bg-slate-50/80 rounded-sm p-6">
+                  <div className="flex items-start gap-4">
+                    <Loader2
+                      className="h-5 w-5 shrink-0 text-slate-700 animate-spin mt-0.5"
+                      aria-hidden
+                    />
+                    <div className="space-y-2">
+                      <p className="text-sm font-outfit font-medium text-slate-900">
+                        Initializing playground…
+                      </p>
+                      <p className="text-xs font-outfit text-slate-600 leading-relaxed">
+                        Verifying Vercel AI Gateway and MCP transport. Stand by.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -386,7 +510,7 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
                   </span>
                   <span className="text-slate-300">/</span>
                   <span className="text-[10px] font-mono text-slate-400">
-                    {message.timestamp.toLocaleTimeString()}
+                    {formatMessageTime(message.timestamp)}
                   </span>
                 </div>
                 
@@ -440,8 +564,8 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
           </div>
         </div>
 
-        {/* Input Area */}
-        <div className="p-8 border-t border-slate-200 bg-white flex-shrink-0">
+        {/* Input Area — pinned to bottom of chat column (viewport below navbar) */}
+        <div className="shrink-0 border-t border-slate-200 bg-white p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-[0_-8px_30px_-12px_rgba(15,23,42,0.12)] sm:p-8 sm:pb-[max(2rem,env(safe-area-inset-bottom))]">
           <div className="max-w-3xl mx-auto relative">
             <Textarea
               value={inputValue}
@@ -449,7 +573,7 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
               onKeyPress={handleKeyPress}
               placeholder="Enter command or natural language instruction..."
               className="min-h-[100px] w-full resize-none border-slate-200 bg-slate-50 rounded-sm p-4 text-sm font-outfit focus:border-slate-900 focus:ring-0 transition-colors pb-14"
-              disabled={isLoading}
+              disabled={isLoading || isPlaygroundInitializing}
             />
             
             <div className="absolute bottom-4 right-4 flex items-center gap-2">
@@ -466,7 +590,7 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
               )}
               <Button
                 onClick={handleSendMessage}
-                disabled={!inputValue.trim() || isLoading}
+                disabled={!inputValue.trim() || isLoading || isPlaygroundInitializing}
                 className="h-8 bg-slate-950 hover:bg-slate-800 text-white rounded-sm text-xs font-mono uppercase px-4"
               >
                 Execute

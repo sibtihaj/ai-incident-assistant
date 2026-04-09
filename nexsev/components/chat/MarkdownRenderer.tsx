@@ -1,38 +1,48 @@
 'use client'
 
 import React, { useState } from 'react'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { ChevronDown, ChevronRight, Copy, Check } from 'lucide-react'
 
+/** Prism theme object matches SyntaxHighlighter's nested token style map at runtime. */
+const prismTheme = vscDarkPlus as unknown as {
+  [key: string]: React.CSSProperties
+}
+
+type MarkdownCodeProps = React.ClassAttributes<HTMLElement> &
+  React.HTMLAttributes<HTMLElement> &
+  ExtraProps
+
 // Function to convert template JSON to readable text format
-function formatTemplateAsText(templateData: any): string {
+function formatTemplateAsText(templateData: unknown): string {
   if (Array.isArray(templateData)) {
     return templateData.map(formatTemplateAsText).join('\n\n')
   }
   
   if (typeof templateData === 'object' && templateData !== null) {
+    const obj = templateData as Record<string, unknown>
     let result = ''
-    
+
     // Handle template objects
-    if (templateData.id && templateData.name) {
-      result += `# ${templateData.name}\n\n`
-      if (templateData.description) {
-        result += `**Description:** ${templateData.description}\n\n`
+    if (obj.id && obj.name) {
+      result += `# ${String(obj.name)}\n\n`
+      if (obj.description) {
+        result += `**Description:** ${String(obj.description)}\n\n`
       }
-      if (templateData.type) {
-        result += `**Type:** ${templateData.type.toUpperCase()}\n\n`
+      if (obj.type) {
+        result += `**Type:** ${String(obj.type).toUpperCase()}\n\n`
       }
     }
-    
+
     // Handle template content
-    if (templateData.template) {
-      result += formatTemplateContent(templateData.template)
+    if (obj.template !== undefined) {
+      result += formatTemplateContent(obj.template)
     }
-    
+
     return result
   }
   
@@ -40,7 +50,7 @@ function formatTemplateAsText(templateData: any): string {
 }
 
 // Function to format template content recursively
-function formatTemplateContent(content: any, indent = 0): string {
+function formatTemplateContent(content: unknown, indent = 0): string {
   if (typeof content === 'string') {
     return content
   }
@@ -112,11 +122,12 @@ function TemplateRenderer({ content }: { content: string }) {
       <div className="template-content">
         <ReactMarkdown
           components={{
-            code({ className, children, ...props }: any) {
+            code({ className, children, style, ...props }: MarkdownCodeProps) {
+              void style
               const match = /language-(\w+)/.exec(className || '')
               return match ? (
                 <SyntaxHighlighter
-                  style={vscDarkPlus}
+                  style={prismTheme}
                   language={match[1]}
                   PreTag="div"
                   customStyle={{
@@ -128,8 +139,7 @@ function TemplateRenderer({ content }: { content: string }) {
                     overflowWrap: 'break-word',
                     maxWidth: '100%',
                     width: '100%'
-                  } as any}
-                  {...props}
+                  }}
                 >
                   {String(children).replace(/\n$/, '')}
                 </SyntaxHighlighter>
@@ -155,7 +165,11 @@ interface MarkdownRendererProps {
 }
 
 // Function to detect and parse JSON content
-function parseJsonContent(content: string): { isJson: boolean; parsedData: any; originalContent: string } {
+function parseJsonContent(content: string): {
+  isJson: boolean
+  parsedData: unknown
+  originalContent: string
+} {
   try {
     // Check if content starts with "Tool result:" and contains JSON
     if (content.startsWith('Tool result:')) {
@@ -176,46 +190,55 @@ function parseJsonContent(content: string): { isJson: boolean; parsedData: any; 
 }
 
 // Component for rendering JSON data with collapsible sections
-function JsonRenderer({ data, title = "JSON Data" }: { data: any; title?: string }) {
+function JsonRenderer({ data, title = "JSON Data" }: { data: unknown; title?: string }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
 
   // Extract meaningful information from tool results
-  const getToolResultSummary = (data: any) => {
-    if (data?.content && Array.isArray(data.content)) {
-      const firstContent = data.content[0]
+  const getToolResultSummary = (data: unknown) => {
+    if (
+      data &&
+      typeof data === 'object' &&
+      'content' in data &&
+      Array.isArray((data as { content: unknown[] }).content)
+    ) {
+      const firstContent = (data as { content: Array<{ text?: unknown }> }).content[0]
       if (firstContent?.text) {
         try {
           // Check if text is already parsed JSON (from our special handling)
-          let parsedText
+          let parsedText: unknown
           if (typeof firstContent.text === 'object') {
             // Already parsed by our special handling
             parsedText = firstContent.text
           } else {
             // Still a string, need to parse
-            let unescaped = firstContent.text
+            const unescaped = String(firstContent.text)
               .replace(/\\\\/g, '\\')
               .replace(/\\"/g, '"')
               .replace(/\\n/g, '\n')
               .replace(/\\t/g, '\t')
-            
-            parsedText = JSON.parse(unescaped)
+
+            parsedText = JSON.parse(unescaped) as unknown
           }
           
           if (Array.isArray(parsedText) && parsedText.length > 0) {
             const firstItem = parsedText[0]
-            return {
-              type: firstItem.type || 'Unknown',
-              name: firstItem.name || 'No name',
-              description: firstItem.description || 'No description'
+            if (firstItem && typeof firstItem === 'object') {
+              const item = firstItem as Record<string, unknown>
+              return {
+                type: String(item.type ?? 'Unknown'),
+                name: String(item.name ?? 'No name'),
+                description: String(item.description ?? 'No description')
+              }
             }
           }
         } catch {
           // If parsing fails, return the raw text
+          const raw = String(firstContent.text)
           return {
             type: 'Text',
             name: 'Tool Response',
-            description: firstContent.text.substring(0, 100) + (firstContent.text.length > 100 ? '...' : '')
+            description: raw.slice(0, 100) + (raw.length > 100 ? '...' : '')
           }
         }
       }
@@ -276,7 +299,7 @@ function JsonRenderer({ data, title = "JSON Data" }: { data: any; title?: string
       {isExpanded && (
         <div className="json-content">
           <SyntaxHighlighter
-            style={vscDarkPlus}
+            style={prismTheme}
             language="json"
             PreTag="div"
             className="text-sm border-0 font-mono !mt-0"
@@ -300,6 +323,66 @@ function JsonRenderer({ data, title = "JSON Data" }: { data: any; title?: string
     </div>
   )
 }
+
+const markdownCodeComponent = (
+  inheritTextColor: boolean
+): NonNullable<Components['code']> =>
+  function CodeBlock({ className, children, ...props }) {
+    const match = /language-(\w+)/.exec(className || '')
+    const language = match ? match[1] : ''
+    const isInline = !className
+
+    return !isInline ? (
+      <div className="relative my-4 overflow-hidden">
+        <div className="flex items-center justify-between bg-gray-800 text-gray-200 px-4 py-2 rounded-t-lg border border-gray-700">
+          <span className="text-xs font-mono uppercase tracking-wide text-gray-300">{language || 'text'}</span>
+          <div className="flex space-x-1">
+            <div className="w-3 h-3 rounded-full bg-red-500"></div>
+            <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+            <div className="w-3 h-3 rounded-full bg-green-500"></div>
+          </div>
+        </div>
+        <div>
+          <SyntaxHighlighter
+            style={prismTheme}
+            language={language || 'json'}
+            PreTag="div"
+            className="rounded-t-none rounded-b-lg text-sm border-x border-b border-gray-700 font-mono !mt-0"
+            customStyle={{
+              margin: 0,
+              borderTopLeftRadius: 0,
+              borderTopRightRadius: 0,
+              background: '#1e1e1e',
+              padding: '1rem',
+              width: '100%',
+              maxWidth: '100%',
+              fontFamily: 'Fira Mono, Menlo, Monaco, Consolas, monospace',
+              color: '#d4d4d4',
+              whiteSpace: 'pre-wrap',
+              wordWrap: 'break-word',
+              overflowWrap: 'break-word'
+            }}
+          >
+            {String(children).replace(/\n$/, '')}
+          </SyntaxHighlighter>
+        </div>
+      </div>
+    ) : (
+      <code
+        className={`
+                  ${inheritTextColor
+            ? 'bg-white/20 text-white/90 border border-white/30'
+            : 'bg-gray-100 text-gray-800 border border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600'
+          } 
+                  px-1.5 py-0.5 rounded text-sm font-mono font-medium
+                `}
+        style={{ fontFamily: 'Fira Mono, Menlo, Monaco, Consolas, monospace' }}
+        {...props}
+      >
+        {children}
+      </code>
+    )
+  }
 
 export default function MarkdownRenderer({ content, className = '', inheritTextColor = false }: MarkdownRendererProps) {
   // Check if content contains JSON
@@ -363,63 +446,7 @@ export default function MarkdownRenderer({ content, className = '', inheritTextC
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
         components={{
-          // Code blocks
-          code({ className, children, ...props }: any) {
-            const match = /language-(\w+)/.exec(className || '')
-            const language = match ? match[1] : ''
-            const isInline = !className
-            
-            return !isInline ? (
-              <div className="relative my-4 overflow-hidden">
-                <div className="flex items-center justify-between bg-gray-800 text-gray-200 px-4 py-2 rounded-t-lg border border-gray-700">
-                  <span className="text-xs font-mono uppercase tracking-wide text-gray-300">{language || 'text'}</span>
-                  <div className="flex space-x-1">
-                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                  </div>
-                </div>
-                <div>
-                  <SyntaxHighlighter
-                    style={vscDarkPlus}
-                    language={language || 'json'}
-                    PreTag="div"
-                    className="rounded-t-none rounded-b-lg text-sm border-x border-b border-gray-700 font-mono !mt-0"
-                    customStyle={{
-                      margin: 0,
-                      borderTopLeftRadius: 0,
-                      borderTopRightRadius: 0,
-                      background: '#1e1e1e',
-                      padding: '1rem',
-                      width: '100%',
-                      maxWidth: '100%',
-                      fontFamily: 'Fira Mono, Menlo, Monaco, Consolas, monospace',
-                      color: '#d4d4d4',
-                      whiteSpace: 'pre-wrap',
-                      wordWrap: 'break-word',
-                      overflowWrap: 'break-word'
-                    }}
-                  >
-                    {String(children).replace(/\n$/, '')}
-                  </SyntaxHighlighter>
-                </div>
-              </div>
-            ) : (
-              <code 
-                className={`
-                  ${inheritTextColor 
-                    ? 'bg-white/20 text-white/90 border border-white/30' 
-                    : 'bg-gray-100 text-gray-800 border border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600'
-                  } 
-                  px-1.5 py-0.5 rounded text-sm font-mono font-medium
-                `}
-                style={{ fontFamily: 'Fira Mono, Menlo, Monaco, Consolas, monospace' }}
-                {...props}
-              >
-                {children}
-              </code>
-            )
-          },
+          code: markdownCodeComponent(inheritTextColor),
           // Headers
           h1: ({ children }) => (
             <h1 className={`text-2xl font-bold mb-4 mt-6 ${inheritTextColor ? 'text-current' : 'text-gray-900 dark:text-gray-100'}`}>

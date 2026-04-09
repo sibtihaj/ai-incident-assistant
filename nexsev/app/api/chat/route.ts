@@ -3,6 +3,7 @@ import path from "path";
 
 import { createGateway, generateText, stepCountIs } from "ai";
 import type { ModelMessage } from "ai";
+import { AIMessage, HumanMessage, trimMessages } from "@langchain/core/messages";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAIConfig, getAiSdkGatewayBaseUrl } from "@/lib/ai/config";
@@ -11,6 +12,7 @@ import { buildMcpToolsForAiSdk } from "@/lib/ai/mcpToolsAiSdk";
 import { ContextDetector } from "@/lib/contextDetector";
 import { MCPClient } from "@/lib/mcp-client";
 import { PromptContext, PromptEngine } from "@/lib/promptEngine";
+import { readPromptRuntimeConfig } from "@/lib/promptConfigStore";
 
 type ConversationMessage = {
   sender: "user" | "ai";
@@ -62,6 +64,50 @@ function mapHistoryToModelMessages(
     );
 }
 
+function estimateMessageTokens(messages: Array<HumanMessage | AIMessage>): number {
+  const totalCharacters = messages.reduce((sum, message) => {
+    const content = typeof message.content === "string" ? message.content : "";
+    return sum + content.length;
+  }, 0);
+  return Math.ceil(totalCharacters / 4);
+}
+
+async function trimHistoryMessages(
+  messages: ModelMessage[],
+  maxHistoryTokens: number
+): Promise<ModelMessage[]> {
+  const baseMessages: Array<HumanMessage | AIMessage> = [];
+  for (const message of messages) {
+    if (typeof message.content !== "string") {
+      continue;
+    }
+    if (message.role === "user") {
+      baseMessages.push(new HumanMessage(message.content));
+    } else if (message.role === "assistant") {
+      baseMessages.push(new AIMessage(message.content));
+    }
+  }
+
+  if (baseMessages.length <= 1) {
+    return messages;
+  }
+
+  const trimmed = await trimMessages(baseMessages, {
+    strategy: "last",
+    maxTokens: maxHistoryTokens,
+    startOn: "human",
+    endOn: ["human", "ai"],
+    tokenCounter: (msgs) => estimateMessageTokens(msgs as Array<HumanMessage | AIMessage>),
+  });
+
+  return trimmed.map((msg) => {
+    if (msg.getType() === "ai") {
+      return { role: "assistant", content: String(msg.content) } satisfies ModelMessage;
+    }
+    return { role: "user", content: String(msg.content) } satisfies ModelMessage;
+  });
+}
+
 export async function POST(request: NextRequest) {
   const requestId = `chat-${Date.now()}`;
   const startedAt = Date.now();
@@ -94,43 +140,70 @@ export async function POST(request: NextRequest) {
     const model = gatewayProvider(aiConfig.model);
 
     const promptEngine = new PromptEngine();
+    await PromptEngine.loadFileContext();
+    const runtimeConfig = await readPromptRuntimeConfig();
     const intent = ContextDetector.detectIntent(message);
     const entities = ContextDetector.extractEntities(message);
+    const hasActionableEntities =
+      entities.actions.length > 0 || ContextDetector.isActionableInput(message);
     const context: PromptContext = {
       intent,
       entities,
       domain: intent,
       ...userContext,
     };
+    promptEngine.setSessionContext({
+      currentProject:
+        typeof userContext.currentProject === "string"
+          ? userContext.currentProject
+          : undefined,
+    });
 
-    for (const historyMessage of conversationHistory) {
-      if (historyMessage.sender === "user" || historyMessage.sender === "ai") {
-        promptEngine.addToHistory({
-          user: historyMessage.sender === "user" ? historyMessage.content : "",
-          assistant: historyMessage.sender === "ai" ? historyMessage.content : "",
-        });
-      }
-    }
-
-    const promptData = promptEngine.buildPrompt(message, context);
-    const isConversational = PromptEngine.isConversationalQuery(message);
+    const promptData = promptEngine.buildPrompt(context);
+    const isConversationalByText = PromptEngine.isConversationalQuery(
+      message,
+      runtimeConfig
+    );
+    const isConversational =
+      isConversationalByText && !hasActionableEntities && intent !== "technical";
 
     const baseMessages: ModelMessage[] = [
       ...mapHistoryToModelMessages(conversationHistory),
       { role: "user", content: message },
     ];
+    const trimmedMessages = await trimHistoryMessages(
+      baseMessages,
+      runtimeConfig.maxHistoryTokens
+    );
+    const estimatedInputTokens = Math.ceil(
+      baseMessages.reduce((sum, msg) => {
+        if (typeof msg.content !== "string") {
+          return sum;
+        }
+        return sum + msg.content.length;
+      }, 0) / 4
+    );
+    const estimatedTrimmedTokens = Math.ceil(
+      trimmedMessages.reduce((sum, msg) => {
+        if (typeof msg.content !== "string") {
+          return sum;
+        }
+        return sum + msg.content.length;
+      }, 0) / 4
+    );
 
     observability.onRequestStart({
       requestId,
       model: aiConfig.model,
       messagePreview: message.slice(0, 160),
+      toolCalls: [`tokens:${estimatedInputTokens}->${estimatedTrimmedTokens}`],
     });
 
     if (isConversational) {
       const result = await generateText({
         model,
-        system: promptData.optimized,
-        messages: baseMessages,
+        system: promptData.system,
+        messages: trimmedMessages,
         temperature: aiConfig.temperature,
       });
 
@@ -180,11 +253,11 @@ export async function POST(request: NextRequest) {
 
     const result = await generateText({
       model,
-      system: promptData.optimized,
-      messages: baseMessages,
+      system: promptData.system,
+      messages: trimmedMessages,
       tools,
       temperature: aiConfig.temperature,
-      stopWhen: stepCountIs(12),
+      stopWhen: stepCountIs(runtimeConfig.maxToolSteps),
       onStepFinish: ({ toolCalls: stepToolCalls }) => {
         if (stepToolCalls.length) {
           observability.onToolCall({
@@ -289,10 +362,13 @@ export async function GET() {
       mcp_tools: mcpTools,
     });
   } catch (error) {
+    const message = String(error);
     return NextResponse.json({
       message: "AI Incident Assistant chat API is running",
       status: "error",
-      error: String(error),
+      llm_status: "error",
+      llm_error: message,
+      error: message,
     });
   }
 }

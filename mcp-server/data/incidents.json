@@ -10,5 +10,19 @@
     "investigation": [],
     "generatedDocs": {},
     "status": "OPEN"
+  },
+  {
+    "id": "SEV1-1775709575700-707",
+    "timestamp": "2026-04-09T04:39:35.700Z",
+    "severity": "SEV1",
+    "customerInfo": {
+      "customerName": "NEwmoon international",
+      "description": "They had their VErcel system down.",
+      "severity": "Very High",
+      "status": "investigating"
+    },
+    "investigation": [],
+    "generatedDocs": {},
+    "status": "OPEN"
   }
 ]

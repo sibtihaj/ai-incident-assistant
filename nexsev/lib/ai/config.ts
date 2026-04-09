@@ -1,3 +1,5 @@
+import { DEFAULT_GATEWAY_MODEL_ID } from "@/lib/ai/constants";
+
 /** OpenAI-compatible HTTP base (e.g. LangChain `baseURL`) — chat completions under `/v1/chat/completions`. */
 const DEFAULT_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1";
 /**
@@ -5,7 +7,8 @@ const DEFAULT_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1";
  * @see https://vercel.com/docs/ai-gateway
  */
 const DEFAULT_AI_SDK_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1/ai";
-const DEFAULT_MODEL = "openai/gpt-5.4";
+
+const DEFAULT_MODEL = DEFAULT_GATEWAY_MODEL_ID;
 const DEFAULT_TEMPERATURE = 0.2;
 
 function firstNonEmptyTrimmed(
@@ -54,11 +57,15 @@ export function getAiSdkGatewayBaseUrl(): string {
  * Resolves the Vercel AI Gateway token.
  * Local: set `AI_GATEWAY_API_KEY` in `nexsev/.env.local` (or repo-root `.env.local`).
  * Vercel: prefer `VERCEL_OIDC_TOKEN` when using OIDC; otherwise use the dashboard API key.
+ *
+ * Precedence (first non-empty wins): `AI_GATEWAY_API_KEY` → `VERCEL_AI_GATEWAY_API_KEY` → `VERCEL_OIDC_TOKEN`.
+ * If both generic and Vercel-named keys are set, the generic key wins — remove or fix a stale `AI_GATEWAY_API_KEY` if the gateway still rejects requests.
  */
 export function getAIConfig(): AIConfig {
   const gatewayToken = firstNonEmptyTrimmed(
     process.env.AI_GATEWAY_API_KEY,
     process.env.VERCEL_AI_GATEWAY_API_KEY,
+    process.env.VERCEL_AI_GATEWAY_API,
     process.env.VERCEL_OIDC_TOKEN
   );
 
@@ -74,7 +81,7 @@ export function getAIConfig(): AIConfig {
 
   if (!model.includes("/")) {
     throw new Error(
-      `Invalid AI_GATEWAY_MODEL "${model}". Use provider/model format, for example "openai/gpt-5.4".`
+      `Invalid AI_GATEWAY_MODEL "${model}". Use provider/model format, for example "${DEFAULT_GATEWAY_MODEL_ID}".`
     );
   }
 

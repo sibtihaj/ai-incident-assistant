@@ -1,5 +1,4 @@
 import { Message, SavedConversation } from '@/types/conversation'
-import { conversationStorage } from './conversationStorage'
 import { titleGenerator } from './titleGenerator'
 
 export class ConversationManager {
@@ -20,7 +19,7 @@ export class ConversationManager {
     const now = new Date()
     const conversationId = this.currentConversationId || this.generateConversationId()
     
-    const conversation: SavedConversation = {
+    const _conversation: SavedConversation = {
       id: conversationId,
       title: title || titleGenerator.generateTitle(messages),
       messages: messages,
@@ -30,7 +29,7 @@ export class ConversationManager {
     }
 
     // Disabled: do not persist conversation
-    // conversationStorage.saveConversation(conversation)
+    void _conversation
     
     // Update current conversation ID
     this.currentConversationId = conversationId
@@ -41,6 +40,7 @@ export class ConversationManager {
 
   // Load a conversation by ID
   loadConversation(id: string): SavedConversation | null {
+    void id
     // Disabled: do not load from storage
     return null
   }
@@ -58,6 +58,8 @@ export class ConversationManager {
 
   // Rename a conversation
   renameConversation(id: string, newTitle: string): void {
+    void id
+    void newTitle
     // conversationStorage.renameConversation(id, newTitle)
   }
 

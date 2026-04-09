@@ -56,7 +56,7 @@ export default function Home() {
           transition={{ duration: 0.6, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
           className="mt-8 max-w-xl text-lg text-slate-600 font-outfit font-light leading-relaxed"
         >
-          A mission-critical workspace that accelerates Sev1 resolution through automated RCA generation, robust tool execution, and deterministic LLM orchestration.
+          A mission-critical playground that accelerates Sev1 resolution through automated RCA generation, robust tool execution, and deterministic LLM orchestration.
         </motion.p>
 
         <motion.div
@@ -69,7 +69,7 @@ export default function Home() {
             href="/chat"
             className="group flex items-center gap-3 bg-slate-950 text-white px-6 py-3.5 rounded-sm text-sm font-medium hover:bg-slate-800 transition-colors"
           >
-            Initialize Workspace
+            Initialize Playground
             <ArrowUpRight className="h-4 w-4 opacity-70 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
           </Link>
           <Link
