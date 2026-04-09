@@ -1,0 +1,80 @@
+{
+    "vault_troubleshooting_info": {
+      "vault_architecture": {
+        "deployment_details": {
+          "cluster_nodes_count": "",
+          "storage_backend": "",
+          "deployment_location": {
+            "cloud_or_onprem": "",
+            "primary_location": "",
+            "secondary_location": ""
+          },
+          "deployment_method": {
+            "vms_or_k8s": "",
+            "service_type": ""
+          }
+        },
+        "unseal_mechanism": "",
+        "vault_license_status": "",
+        "vault_config_file": {
+          "shared_in_ticket": "",
+          "config_details": ""
+        },
+        "vault_version": "",
+        "replication": {
+          "performance_replication_enabled": "",
+          "dr_replication_enabled": "",
+          "replica_vault_version": "",
+          "dr_pr_secondary_location": ""
+        },
+        "load_balancer": {
+          "has_load_balancer": "",
+          "primary_load_balancer": "",
+          "secondary_load_balancer": ""
+        }
+      },
+      "issue_occurrence": {
+        "recent_changes": {
+          "vault_upgrade": {
+            "upgrade_performed": "",
+            "from_version": "",
+            "to_version": "",
+            "timeframe": ""
+          },
+          "infrastructure_changes": [],
+          "network_changes": {
+            "changes_made": "",
+            "specific_changes": [],
+            "reason_for_changes": ""
+          }
+        }
+      },
+      "logs_collection": {
+        "log_aggregation_tools": [],
+        "telemetry_dashboards": [],
+        "monitoring_tools": [],
+        "operational_logs_gathered": "",
+        "diagnostic_packages_collected": ""
+      },
+      "vault_cluster_health_check": {
+        "vault_status_output": "",
+        "replication_status": {
+          "replication_enabled": "",
+          "replication_status_output": ""
+        },
+        "snapshots": {
+          "vault_snapshots_taken": "",
+          "backup_method": "",
+          "backup_frequency": ""
+        },
+        "raft_peers": {
+          "raft_list_peers_output": "",
+          "active_leader_status": ""
+        },
+        "unseal_recovery_keys": {
+          "quorum_access": "",
+          "keys_needed_for": ""
+        }
+      }
+    }
+  }

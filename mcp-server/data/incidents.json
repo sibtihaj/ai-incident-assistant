@@ -1,0 +1,14 @@
+[
+  {
+    "id": "SEV1-1775703885156-301",
+    "timestamp": "2026-04-09T03:04:45.156Z",
+    "severity": "SEV1",
+    "customerInfo": {
+      "customer": "SmokeTest",
+      "issue": "Gateway migration validation"
+    },
+    "investigation": [],
+    "generatedDocs": {},
+    "status": "OPEN"
+  }
+]

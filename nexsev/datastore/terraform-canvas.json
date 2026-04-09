@@ -1,0 +1,29 @@
+{
+    "incidentTemplate": {
+      "incidentDescription": {
+        "summary": "",
+        "type": "",
+        "errorObserved": ""
+      },
+      "customerImpact": {
+        "maintenanceWindowActive": null,
+        "customerSentiment": "",
+        "desiredOutcome": "",
+        "attendees": []
+      },
+      "infrastructureDetails": {
+        "applicationVersion": "",
+        "installationMode": "",
+        "operationalMode": "",
+        "recoveryMethod": "",
+        "backupDetails": {
+          "summary": "",
+          "method": ""
+        },
+        "externalServices": [],
+        "postgresVersion": "",
+        "redisVersion": "",
+        "osVersion": ""
+      }
+    }
+  }

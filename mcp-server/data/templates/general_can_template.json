@@ -1,0 +1,39 @@
+{
+  "can_template": {
+    "header": {
+      "title": "CAN Report",
+      "severity": "Sev-1",
+      "type": "",
+      "status": "INITIAL",
+      "reminder": "SEV-1 type must be set prior to applying CAN Report. Please ignore if this has been done."
+    },
+    "sections": {
+      "problem_statement": {
+        "title": "Problem Statement (current condition)",
+        "description": "What is affected technically (Engineering Oriented)",
+        "content": ""
+      },
+      "business_impact": {
+        "title": "Business Impact",
+        "description": "How does this disrupt the customer’s business or operations? What is not working and impacted use cases?",
+        "content": ""
+      },
+      "actions": {
+        "title": "Actions",
+        "description": "Technical Actions that have been performed so far (by customer or engineer)",
+        "content": ""
+      },
+      "needs": {
+        "title": "Needs",
+        "description": "Next planned actions for recovery (if known)?",
+        "content": ""
+      }
+    },
+    "metadata": {
+      "created_date": "",
+      "updated_date": "",
+      "customer_name": "",
+      "incident_id": ""
+    }
+  }
+} 

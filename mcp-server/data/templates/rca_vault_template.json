@@ -1,0 +1,45 @@
+{
+    "email_template": {
+      "greeting": {
+        "customer_name": "",
+        "opening_message": ""
+      },
+      "rca_header": {
+        "section_title": "RCA"
+      },
+      "issue_summary_and_impact": {
+        "overview_description": "",
+        "timeline_details": "",
+        "impact_description": "",
+        "affected_systems": [],
+        "affected_users_count": ""
+      },
+      "actions_taken_to_resolve": {
+        "resolution_steps": [],
+        "troubleshooting_steps": [],
+        "additional_context_for_records": ""
+      },
+      "root_cause": {
+        "primary_cause": "",
+        "investigation_method": "",
+        "technical_explanation": ""
+      },
+      "follow_up_hashicorp": {
+        "prevention_actions": [],
+        "bug_reports_needed": [],
+        "research_commitments": [],
+        "internal_improvements": []
+      },
+      "follow_up_customer": {
+        "recommended_actions": [],
+        "upgrade_requirements": [],
+        "configuration_changes": [],
+        "customer_commitments": []
+      },
+      "closing": {
+        "next_steps_message": "",
+        "contact_information": "",
+        "case_resolution_request": ""
+      }
+    }
+  }

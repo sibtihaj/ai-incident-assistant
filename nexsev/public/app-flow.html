@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Application Flow Diagram</title>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true });
+  </script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; background: #fafbfc; }
+    h1 { color: #333; }
+    .desc { margin-bottom: 2rem; }
+    .mermaid { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #0001; padding: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>Application Flow Diagram</h1>
+  <div class="desc">
+    <p>This diagram shows the sequential and parallel steps of the application, from user input in the chatbox through the backend, model, tool server, and back to the user. Parallel/async steps are indicated with dashed arrows.</p>
+  </div>
+  <div class="mermaid">
+flowchart TD
+  User["User (Chatbox)"]
+  UI["React/Next.js UI"]
+  API["/api/chat (Next.js API Route)"]
+  Context["PromptEngine + ContextDetector"]
+  Intent["Intent Detection"]
+  Prompt["Prompt Data"]
+  Tools["MCPClient"]
+  ModelCall["Model API Call"]
+  LLM["LLM (Ollama/Gemini)"]
+  MCPServer["MCP Server"]
+  ToolDef["Tool Definitions"]
+  DataStore["Data Store"]
+
+  User --> UI
+  UI --> API
+  API --> Context
+  Context --> Intent
+  Context --> Prompt
+  API --> Tools
+  API --> ModelCall
+  ModelCall --> LLM
+  LLM --> API
+  API --> Tools
+  Tools --> MCPServer
+  MCPServer --> ToolDef
+  MCPServer --> DataStore
+  MCPServer --> Tools
+  Tools --> API
+  API --> LLM
+  LLM --> API
+  API --> UI
+  UI --> User
+
+  %% Parallel/Async
+  Tools -.-> MCPServer
+  MCPServer -.-> DataStore
+  API -.-> Context
+  UI -.-> User
+  </div>
+</body>
+</html> 

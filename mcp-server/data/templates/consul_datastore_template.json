@@ -1,0 +1,24 @@
+{
+    "consul_troubleshooting_info": {
+      "consul_architecture": {
+        "deployment_details": {
+          "cluster_nodes_count": "",
+          "deployment_location": {
+            "cloud_or_onprem": "",
+            "primary_datacenter": "",
+            "secondary_datacenter": ""
+          },
+          "deployment_method": {
+            "vms_or_k8s": "",
+            "service_type": ""
+          }
+        },
+        "consul_version": "",
+        "acl_system": {
+          "acl_enabled": "",
+          "acl_default_policy": "",
+          "acl_bootstrap_completed": ""
+        }
+      }
+    }
+  }

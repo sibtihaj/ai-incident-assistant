@@ -1,0 +1,78 @@
+{
+  "sev1_canvas": {
+    "incident_description": {
+      "incident_overview": {
+        "value": "",
+        "description": "Describe the incident so any new joiners don't need to ask what's happening"
+      },
+      "incident_type": {
+        "value": "",
+        "description": "Unexpected outage? Failed upgrade? Any errors?"
+      },
+      "error_observed": {
+        "value": "",
+        "description": "Error observed"
+      }
+    },
+    "customer_description": {
+      "maintenance_window": {
+        "value": "",
+        "description": "Is there an active maintenance window?"
+      },
+      "customer_sentiment": {
+        "value": "",
+        "description": "Customer sentiment"
+      },
+      "customer_objectives": {
+        "value": "",
+        "description": "What does the customer want to do?"
+      },
+      "call_participants": {
+        "value": "",
+        "description": "Who is on the call and do we have the right people?"
+      }
+    },
+    "infrastructure_description": {
+      "application_version": {
+        "value": "",
+        "description": "Application Version (release summaries)"
+      },
+      "installation_mode": {
+        "value": "",
+        "description": "Installation Mode (and platform version)"
+      },
+      "operational_mode": {
+        "value": "",
+        "description": "Operational Mode"
+      },
+      "recovery_method": {
+        "recovery_approach": {
+          "value": "",
+          "description": "Can the instance be rebuilt, does the existing instance need to be fixed in-place?"
+        },
+        "backup_details": {
+          "mounted_disk": {
+            "value": "",
+            "description": "What is backed-up and how is it backed-up? - Mounted disk?"
+          },
+          "external_services": {
+            "value": "",
+            "description": "What is backed-up and how is it backed-up? - External services?"
+          }
+        }
+      },
+      "postgres_version": {
+        "value": "",
+        "description": "Postgres Version"
+      },
+      "redis_version": {
+        "value": "",
+        "description": "Redis Version"
+      },
+      "os_version": {
+        "value": "",
+        "description": "OS Version"
+      }
+    }
+  }
+ }

@@ -1,0 +1,38 @@
+{
+  "rca_template": {
+    "issue_summary_and_impact": {
+      "overview_description": {
+        "value": "",
+        "suggested_question": "Provide an overview of what happened, including timeline and impact (what was down/how many X impacted)."
+      }
+    },
+    "actions_taken_to_resolve": {
+      "resolution_steps": {
+        "value": "",
+        "suggested_question": "Describe the steps taken to resolve the issue."
+      },
+      "troubleshooting_steps": {
+        "value": "",
+        "suggested_question": "Describe any other troubleshooting steps you went through that will be helpful for support & customer to have a record of in the future."
+      }
+    },
+    "root_cause": {
+      "primary_cause": {
+        "value": "",
+        "suggested_question": "State the root cause of the issue that occurred and how you came to that conclusion."
+      }
+    },
+    "follow_up_hashicorp": {
+      "actions": {
+        "value": "",
+        "suggested_question": "List any HashiCorp follow-up actions to prevent issue from occurring again, items such as bug reports / research we said we'd do / etc."
+      }
+    },
+    "follow_up_customer": {
+      "actions": {
+        "value": "",
+        "suggested_question": "List contributing factors that led to this incident for the customer to correct or avoid and any customer follow-up actions to prevent issue from occurring again, items they committed to, such as upgrading / etc."
+      }
+    }
+  }
+} 
