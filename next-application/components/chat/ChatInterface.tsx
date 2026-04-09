@@ -131,7 +131,6 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
     reset_at: string | null
     authenticated: boolean
   } | null>(null)
-  const [quotaExtensionEnabled, setQuotaExtensionEnabled] = useState(false)
   const [quotaExtensionCredits, setQuotaExtensionCredits] = useState(5)
   const [extendModalOpen, setExtendModalOpen] = useState(false)
   const [extendPassword, setExtendPassword] = useState('')
@@ -358,9 +357,6 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
               reset_at: string | null
               authenticated: boolean
             }
-          }
-          if (typeof data.quota_extension_enabled === 'boolean') {
-            setQuotaExtensionEnabled(data.quota_extension_enabled)
           }
           if (
             typeof data.quota_extension_credits === 'number' &&
@@ -1057,20 +1053,18 @@ export default function ChatInterface({ className }: ChatInterfaceProps) {
                     : ''}
                   .
                 </p>
-                {quotaExtensionEnabled && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-9 rounded-sm border-amber-300 bg-white text-amber-950 hover:bg-amber-100 text-[11px] font-mono uppercase tracking-widest"
-                    onClick={() => {
-                      setExtendModalOpen(true)
-                      setExtendModalError(null)
-                      setExtendPassword('')
-                    }}
-                  >
-                    Extend quota (+{quotaExtensionCredits})
-                  </Button>
-                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 rounded-sm border-amber-300 bg-white text-amber-950 hover:bg-amber-100 text-[11px] font-mono uppercase tracking-widest"
+                  onClick={() => {
+                    setExtendModalOpen(true)
+                    setExtendModalError(null)
+                    setExtendPassword('')
+                  }}
+                >
+                  Extend quota (+{quotaExtensionCredits})
+                </Button>
               </div>
             )}
             <div className="mb-3 rounded-sm border border-slate-200 bg-slate-50 p-3">
