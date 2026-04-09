@@ -1,7 +1,17 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import fs from "fs";
 import path from "path";
+
+import { getMcpServerPath } from "@/lib/mcp-server-path";
+import {
+  mcpTransportConfigKey,
+  resolveMcpTransport,
+  type ResolvedMcpTransport,
+} from "@/lib/mcp-transport-config";
 
 export interface MCPTool {
   name: string;
@@ -11,11 +21,12 @@ export interface MCPTool {
 
 export class MCPClient {
   private client: Client;
-  private transport: StdioClientTransport | null = null;
+  private transport: Transport | null = null;
   private connected = false;
   private tools: MCPTool[] = [];
   private static instance: MCPClient | null = null;
   private connectPromise: Promise<void> | null = null;
+  private lastConfigKey: string | null = null;
   private readonly connectTimeoutMs = 15000;
   private readonly toolTimeoutMs = 25000;
   private readonly healthTimeoutMs = 5000;
@@ -40,7 +51,7 @@ export class MCPClient {
   private withTimeout<T>(
     promise: Promise<T>,
     timeoutMs: number,
-    operation: string
+    operation: string,
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -64,17 +75,19 @@ export class MCPClient {
     let cursor: string | undefined;
     do {
       const toolsResult = await this.client.listTools(
-        cursor ? { cursor } : undefined
+        cursor ? { cursor } : undefined,
       );
-      const batch = (toolsResult.tools || []).map((tool: {
-        name: string;
-        description?: string;
-        inputSchema?: Record<string, unknown>;
-      }) => ({
-        name: tool.name,
-        description: tool.description ?? "",
-        inputSchema: tool.inputSchema,
-      }));
+      const batch = (toolsResult.tools || []).map(
+        (tool: {
+          name: string;
+          description?: string;
+          inputSchema?: Record<string, unknown>;
+        }) => ({
+          name: tool.name,
+          description: tool.description ?? "",
+          inputSchema: tool.inputSchema,
+        }),
+      );
       aggregated.push(...batch);
       cursor = toolsResult.nextCursor;
     } while (cursor);
@@ -85,64 +98,103 @@ export class MCPClient {
     if (!this.connected) {
       return;
     }
-    await this.withTimeout(this.client.listTools(), this.healthTimeoutMs, "MCP health check");
+    await this.withTimeout(
+      this.client.listTools(),
+      this.healthTimeoutMs,
+      "MCP health check",
+    );
   }
 
-  /**
-   * Connect to the MCP server process
-   * @param serverScriptPath Absolute path to the MCP server build script (e.g., build/index.js)
-   */
-  async connect(serverScriptPath: string): Promise<void> {
-    if (this.connectPromise) {
-      return this.connectPromise;
-    }
-
-    this.connectPromise = (async () => {
+  private createTransport(resolved: ResolvedMcpTransport): Transport {
+    if (resolved.mode === "stdio") {
+      const serverScriptPath = resolved.serverScriptPath;
       if (!serverScriptPath || typeof serverScriptPath !== "string") {
-        throw new Error("MCP server script path is required");
+        throw new Error("MCP server script path is required for stdio transport");
       }
-
       if (!fs.existsSync(serverScriptPath)) {
         throw new Error(`MCP server script not found: ${serverScriptPath}`);
       }
-
-      // Always verify connection health if already connected.
-      if (this.connected) {
-        try {
-          await this.ensureHealthyConnection();
-          return;
-        } catch {
-          this.connected = false;
-        }
-      }
-
       const isJs = serverScriptPath.endsWith(".js");
       const isPy = serverScriptPath.endsWith(".py");
       if (!isJs && !isPy) {
         throw new Error("Server script must be a .js or .py file");
       }
-
       const command = isPy
         ? process.platform === "win32"
           ? "python"
           : "python3"
         : process.execPath;
-
       const serverCwd = path.dirname(path.resolve(serverScriptPath));
-
-      this.transport = new StdioClientTransport({
+      return new StdioClientTransport({
         command,
         args: [serverScriptPath],
         cwd: serverCwd,
       });
+    }
+
+    if (resolved.mode === "streamable-http") {
+      return new StreamableHTTPClientTransport(resolved.url, {
+        requestInit: resolved.requestInit,
+      });
+    }
+
+    return new SSEClientTransport(resolved.url, {
+      requestInit: resolved.requestInit,
+    });
+  }
+
+  /**
+   * Connect to the MCP server.
+   *
+   * - **Remote:** set `MCP_SERVER_URL` (Streamable HTTP by default; `MCP_TRANSPORT=sse` for legacy SSE servers).
+   * - **Local stdio:** omit `MCP_SERVER_URL`; pass a script path or rely on `MCP_SERVER_PATH` / `getMcpServerPath()`.
+   */
+  async connect(serverScriptPath?: string): Promise<void> {
+    if (this.connectPromise) {
+      return this.connectPromise;
+    }
+
+    const scriptPath = serverScriptPath ?? getMcpServerPath();
+    let resolved: ResolvedMcpTransport;
+    try {
+      resolved = resolveMcpTransport(scriptPath);
+    } catch (e) {
+      return Promise.reject(
+        e instanceof Error ? e : new Error(String(e)),
+      );
+    }
+    const configKey = mcpTransportConfigKey(resolved);
+
+    this.connectPromise = (async () => {
+      if (this.connected && this.lastConfigKey !== configKey) {
+        await this.disconnect();
+      }
+
+      if (this.connected && this.lastConfigKey === configKey) {
+        try {
+          await this.ensureHealthyConnection();
+          return;
+        } catch {
+          this.connected = false;
+          try {
+            await this.client.close();
+          } catch {
+            /* ignore */
+          }
+          this.transport = null;
+        }
+      }
+
+      this.transport = this.createTransport(resolved);
 
       await this.withTimeout(
         this.client.connect(this.transport),
         this.connectTimeoutMs,
-        "MCP connect"
+        "MCP connect",
       );
 
       this.connected = true;
+      this.lastConfigKey = configKey;
       await this.refreshTools();
     })();
 
@@ -150,6 +202,13 @@ export class MCPClient {
       await this.connectPromise;
     } catch (error) {
       this.connected = false;
+      this.lastConfigKey = null;
+      this.transport = null;
+      try {
+        await this.client.close();
+      } catch {
+        /* ignore */
+      }
       throw new Error(`Failed to connect to MCP server: ${error}`);
     } finally {
       this.connectPromise = null;
@@ -170,7 +229,7 @@ export class MCPClient {
    */
   async callTool(
     toolName: string,
-    args: Record<string, unknown> = {}
+    args: Record<string, unknown> = {},
   ): Promise<unknown> {
     if (!this.connected) {
       throw new Error("Not connected to MCP server");
@@ -191,20 +250,21 @@ export class MCPClient {
           arguments: args,
         }),
         this.toolTimeoutMs,
-        `Tool call: ${toolName}`
+        `Tool call: ${toolName}`,
       );
       return response;
     } catch (error) {
       const message = String(error);
 
-      // Attempt one recovery call if connection looks stale.
       if (
         message.includes("not connected") ||
         message.includes("closed") ||
         message.includes("ECONNRESET")
       ) {
         this.connected = false;
-        throw new Error(`Tool ${toolName} failed due to stale connection: ${message}`);
+        throw new Error(
+          `Tool ${toolName} failed due to stale connection: ${message}`,
+        );
       }
 
       throw new Error(`Tool ${toolName} failed: ${message}`);
@@ -223,6 +283,7 @@ export class MCPClient {
     } finally {
       this.connected = false;
       this.transport = null;
+      this.lastConfigKey = null;
       this.tools = [];
     }
   }
@@ -233,4 +294,4 @@ export class MCPClient {
   isConnected(): boolean {
     return this.connected;
   }
-} 
+}

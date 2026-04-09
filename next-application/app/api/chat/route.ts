@@ -443,11 +443,17 @@ export async function POST(request: NextRequest) {
         error: `MCP unavailable: ${details}`,
         elapsedMs: Date.now() - startedAt,
       });
+      const remoteConfigured = Boolean(
+        process.env.MCP_SERVER_URL?.trim() || process.env.MCP_REMOTE_URL?.trim(),
+      );
+      const remediation = remoteConfigured
+        ? `${details} — Check MCP_SERVER_URL, MCP_SERVER_BEARER_TOKEN (or MCP_SERVER_HEADERS_JSON), and that the server implements MCP Streamable HTTP (default) or legacy SSE (MCP_TRANSPORT=sse).`
+        : `${details} — Local stdio: build mcp-server (npm run build) and set MCP_SERVER_PATH if needed. On Vercel/serverless, point MCP_SERVER_URL at a remote MCP server (e.g. Cloudflare Worker) instead of stdio.`;
+
       return NextResponse.json(
         {
           error: "MCP server unavailable",
-          details:
-            `${details} — Ensure mcp-server is built (npm run build in mcp-server), set MCP_SERVER_PATH if needed, and use stdio only in a Node environment (local or long-lived server), not typical Vercel serverless without a remote MCP transport.`,
+          details: remediation,
           ...(langsmith ? { metadata: { langsmith } } : {}),
         },
         { status: 503 }

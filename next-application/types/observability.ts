@@ -3,10 +3,13 @@ export type RuntimeHealth = {
   llm_error?: string;
   mcp_status: string;
   mcp_error?: string;
+  mcp_transport: "stdio" | "streamable-http" | "sse";
+  mcp_endpoint: string;
   current_model: string;
   gateway_sdk_base_url: string;
   mcp_tools_count: number;
   mcp_tools: string[];
+  mcp_server_path: string;
   mcp_server_path_exists: boolean;
 };
 

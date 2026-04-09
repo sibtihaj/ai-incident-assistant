@@ -330,10 +330,19 @@ export default function ObservabilityPage() {
                           {payload.runtime.mcp_error}
                         </p>
                       )}
+                      <p className="mt-2 text-xs text-slate-600 break-all">
+                        Mode: {payload.runtime.mcp_transport} · Endpoint:{" "}
+                        {payload.runtime.mcp_endpoint}
+                      </p>
                       <p className="mt-2 text-xs text-slate-600">
-                        Tools: {payload.runtime.mcp_tools_count} · Server file
-                        present:{" "}
-                        {payload.runtime.mcp_server_path_exists ? "yes" : "no"}
+                        Tools: {payload.runtime.mcp_tools_count}
+                        {payload.runtime.mcp_transport === "stdio"
+                          ? ` · Local script on disk: ${
+                              payload.runtime.mcp_server_path_exists
+                                ? "yes"
+                                : "no"
+                            }`
+                          : null}
                       </p>
                     </div>
                   </div>

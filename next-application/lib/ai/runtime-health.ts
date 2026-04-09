@@ -5,6 +5,10 @@ import { createGateway, generateText } from "ai";
 import { getAIConfig, getAiSdkGatewayBaseUrl } from "@/lib/ai/config";
 import { getMcpServerPath } from "@/lib/mcp-server-path";
 import { MCPClient } from "@/lib/mcp-client";
+import {
+  resolveMcpTransport,
+  type ResolvedMcpTransport,
+} from "@/lib/mcp-transport-config";
 
 const MCP_SERVER_PATH = getMcpServerPath();
 
@@ -21,6 +25,10 @@ export interface ChatRuntimeHealth {
   llm_error?: string;
   mcp_status: "healthy" | "error";
   mcp_error?: string;
+  /** How MCP is reached: local subprocess or remote HTTP transport. */
+  mcp_transport: "stdio" | "streamable-http" | "sse";
+  /** stdio script path or remote MCP base URL (no secrets). */
+  mcp_endpoint: string;
   mcp_server_path: string;
   mcp_server_path_exists: boolean;
   mcp_tools_count: number;
@@ -58,19 +66,38 @@ export async function getChatRuntimeHealth(): Promise<ChatRuntimeHealth> {
   let mcpStatus: "healthy" | "error" = "healthy";
   let mcpError: string | undefined;
   let mcpTools: string[] = [];
+  let resolvedMcp: ResolvedMcpTransport;
   try {
-    const mcpClient = await getMcpClient();
-    mcpTools = mcpClient.getAvailableTools().map((tool) => tool.name);
-  } catch (error) {
+    resolvedMcp = resolveMcpTransport(MCP_SERVER_PATH);
+  } catch (e) {
+    resolvedMcp = { mode: "stdio", serverScriptPath: MCP_SERVER_PATH };
     mcpStatus = "error";
-    mcpError = String(error);
+    mcpError = e instanceof Error ? e.message : String(e);
   }
+
+  if (mcpStatus === "healthy") {
+    try {
+      const mcpClient = await getMcpClient();
+      mcpTools = mcpClient.getAvailableTools().map((tool) => tool.name);
+    } catch (error) {
+      mcpStatus = "error";
+      mcpError = String(error);
+    }
+  }
+
+  const mcpTransport = resolvedMcp.mode;
+  const mcpEndpoint =
+    resolvedMcp.mode === "stdio"
+      ? resolvedMcp.serverScriptPath
+      : resolvedMcp.url.toString();
 
   return {
     llm_status: llmStatus,
     llm_error: llmError,
     mcp_status: mcpStatus,
     mcp_error: mcpError,
+    mcp_transport: mcpTransport,
+    mcp_endpoint: mcpEndpoint,
     mcp_server_path: MCP_SERVER_PATH,
     mcp_server_path_exists: fs.existsSync(MCP_SERVER_PATH),
     mcp_tools_count: mcpTools.length,
