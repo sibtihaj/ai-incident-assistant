@@ -11,7 +11,12 @@ loadEnvConfig(workspaceRoot);
 loadEnvConfig(nexsevRoot);
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // App directory as tracing root when another lockfile exists higher in the tree.
+  outputFileTracingRoot: nexsevRoot,
+  // Bounded next/image disk cache (CVE-2026-27980); LRU eviction when over limit.
+  images: {
+    maximumDiskCacheSize: 500_000_000,
+  },
 };
 
 export default nextConfig;
