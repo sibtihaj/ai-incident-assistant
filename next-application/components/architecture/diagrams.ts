@@ -368,21 +368,21 @@ sequenceDiagram
     autonumber
     participant U as User
     participant C as Client
-    participant R as Chat API
-    participant D as Postgres chat_sessions
-    participant G as AI Gateway
+    participant R as "Chat API"
+    participant D as "Postgres chat_sessions"
+    participant G as "AI Gateway"
 
     U->>C: Send message
     C->>R: POST history + conversationId
     R->>D: SELECT messages JSON envelope
     D-->>R: prior messages + memory
-    Note over R: Parse headings and key lines into keyFacts; refresh summary
+    Note over R: Parse headings and key lines into keyFacts, then refresh summary
     alt CAN report and required facts missing
         R-->>C: Guided reply listing missing fields
         C-->>U: No model call yet
     else facts sufficient or not CAN path
         R->>D: UPDATE envelope.memory
-        Note over R: Dedupe last user message vs history; trim tokens
+        Note over R: Dedupe last user message vs history, then trim tokens
         R->>G: generateText(system + memory, trimmed messages)
         G-->>R: Assistant text
         R-->>C: Response + observability metadata
